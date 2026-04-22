@@ -1,0 +1,128 @@
+package com.pgratz.artouchpad
+
+import android.util.Log
+import android.view.MotionEvent
+
+/**
+ * Shizuku UserService — runs as shell uid.
+ *
+ * Creates a real virtual mouse via /dev/uinput using JNI (the only reliable
+ * way to call ioctl with a value argument on Android 16, where Os.ioctl was
+ * stripped down to ioctlInetAddress and ioctlInt(fd, req) — no generic variant).
+ *
+ * Shell uid is in the `input` group and has rw access to /dev/uinput, so no
+ * additional permissions are needed beyond what Shizuku already grants.
+ */
+class MouseService : IMouseService.Stub() {
+
+    private var displayId = android.view.Display.DEFAULT_DISPLAY
+    private var displayWidth = 1920
+    private var displayHeight = 1080
+    private var cursorX = 960f
+    private var cursorY = 540f
+
+    private var uinputReady = false
+
+    init {
+        initUinput()
+    }
+
+    private fun initUinput() {
+        try {
+            val fd = UinputNative.nOpen()
+            if (fd < 0) { Log.e(TAG, "nOpen failed"); return }
+
+            fun ioctl(req: Int, value: Int) {
+                val r = UinputNative.nIoctl(req, value)
+                if (r < 0) Log.w(TAG, "ioctl(0x${req.toString(16)}, $value) returned $r")
+            }
+
+            ioctl(UI_SET_EVBIT,  EV_SYN)
+            ioctl(UI_SET_EVBIT,  EV_KEY)
+            ioctl(UI_SET_EVBIT,  EV_REL)
+            ioctl(UI_SET_RELBIT, REL_X)
+            ioctl(UI_SET_RELBIT, REL_Y)
+            ioctl(UI_SET_RELBIT, REL_WHEEL)
+            ioctl(UI_SET_RELBIT, REL_HWHEEL)
+            ioctl(UI_SET_KEYBIT, BTN_LEFT)
+            ioctl(UI_SET_KEYBIT, BTN_RIGHT)
+            ioctl(UI_SET_KEYBIT, BTN_MIDDLE)
+
+            val n = UinputNative.nWriteDevInfo("AR Touchpad Mouse")
+            if (n < 0) { Log.e(TAG, "nWriteDevInfo failed"); return }
+
+            ioctl(UI_DEV_CREATE, 0)
+
+            Thread.sleep(400) // give InputReader time to register the device
+            uinputReady = true
+            Log.i(TAG, "uinput device ready")
+        } catch (e: Exception) {
+            Log.e(TAG, "initUinput failed: $e")
+        }
+    }
+
+    private fun ev(type: Int, code: Int, value: Int) = UinputNative.nWriteEvent(type, code, value)
+    private fun sync() = ev(EV_SYN, SYN_REPORT, 0)
+
+    override fun setDisplay(id: Int, width: Int, height: Int) {
+        displayId = id
+        displayWidth = width
+        displayHeight = height
+        cursorX = width / 2f
+        cursorY = height / 2f
+
+        // Nudge the pointer to wake the cursor.
+        if (uinputReady) {
+            ev(EV_REL, REL_X, 1); ev(EV_REL, REL_Y, 1); sync()
+            Thread.sleep(50)
+            ev(EV_REL, REL_X, -1); ev(EV_REL, REL_Y, -1); sync()
+        }
+        Log.i(TAG, "setDisplay id=$id ${width}x${height} uinputReady=$uinputReady")
+    }
+
+    override fun moveMouse(dx: Float, dy: Float) {
+        if (!uinputReady) return
+        val idx = dx.toInt()
+        val idy = dy.toInt()
+        if (idx == 0 && idy == 0) return
+        cursorX = (cursorX + dx).coerceIn(0f, displayWidth - 1f)
+        cursorY = (cursorY + dy).coerceIn(0f, displayHeight - 1f)
+        ev(EV_REL, REL_X, idx)
+        ev(EV_REL, REL_Y, idy)
+        sync()
+    }
+
+    override fun click(x: Float, y: Float, button: Int) {
+        if (!uinputReady) return
+        val btn = if (button == MotionEvent.BUTTON_SECONDARY) BTN_RIGHT else BTN_LEFT
+        ev(EV_KEY, btn, 1); sync()
+        Thread.sleep(50)
+        ev(EV_KEY, btn, 0); sync()
+    }
+
+    override fun scroll(dx: Float, dy: Float) {
+        if (!uinputReady) return
+        val steps = -(dy / 60f).toInt()
+        if (steps != 0) { ev(EV_REL, REL_WHEEL, steps); sync() }
+    }
+
+    override fun destroy() {
+        UinputNative.nClose()
+        uinputReady = false
+    }
+
+    companion object {
+        private const val TAG = "MouseService"
+
+        const val UI_SET_EVBIT  = 0x40045564
+        const val UI_SET_KEYBIT = 0x40045565
+        const val UI_SET_RELBIT = 0x40045566
+        const val UI_DEV_CREATE  = 0x5501
+        const val UI_DEV_DESTROY = 0x5502
+
+        const val EV_SYN = 0; const val EV_KEY = 1; const val EV_REL = 2
+        const val REL_X = 0; const val REL_Y = 1; const val REL_HWHEEL = 6; const val REL_WHEEL = 8
+        const val BTN_LEFT = 0x110; const val BTN_RIGHT = 0x111; const val BTN_MIDDLE = 0x112
+        const val SYN_REPORT = 0
+    }
+}

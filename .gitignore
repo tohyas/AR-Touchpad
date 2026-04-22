@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+app/.cxx/
+local.properties
+logcat.txt
+logcat.txt~
+cmd.txt
+*.iml
+.idea/
+.DS_Store
+captures/
