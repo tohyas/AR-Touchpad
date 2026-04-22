@@ -298,7 +298,9 @@ private fun TouchpadSurface(
                                         if (p0prev != null && p1prev != null && p0curr != null && p1curr != null) {
                                             val dx = ((p0curr.x - p0prev.x) + (p1curr.x - p1prev.x)) / 2f
                                             val dy = ((p0curr.y - p0prev.y) + (p1curr.y - p1prev.y)) / 2f
-                                            if (abs(dx) > 1f || abs(dy) > 1f) {
+                                            // No per-frame threshold: two fingers always means scroll.
+                                            // Sub-pixel amounts accumulate in MouseService.
+                                            if (dx != 0f || dy != 0f) {
                                                 onScroll(dx, dy)
                                                 onTouchModeChanged(TouchMode.SCROLL)
                                                 didMove = true

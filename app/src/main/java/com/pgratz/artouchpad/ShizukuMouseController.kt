@@ -35,7 +35,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(8)   // bumped — sub-pixel accumulation in MouseService
+        .version(9)   // bumped — scroll accumulator, remove per-frame scroll threshold
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {

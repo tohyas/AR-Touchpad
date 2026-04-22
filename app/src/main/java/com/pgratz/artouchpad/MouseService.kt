@@ -42,6 +42,7 @@ class MouseService : IMouseService.Stub() {
     // to zero every frame and producing sudden jumps.
     private var accumX = 0f
     private var accumY = 0f
+    private var accumScroll = 0f
 
     init {
         initUinput()
@@ -92,6 +93,7 @@ class MouseService : IMouseService.Stub() {
         cursorY = height / 2f
         accumX = 0f
         accumY = 0f
+        accumScroll = 0f
 
         // Nudge the pointer to wake the cursor.
         if (uinputReady) {
@@ -128,8 +130,14 @@ class MouseService : IMouseService.Stub() {
 
     override fun scroll(dx: Float, dy: Float) {
         if (!uinputReady) return
-        val steps = -(dy / 60f).toInt()
-        if (steps != 0) { ev(EV_REL, REL_WHEEL, steps); sync() }
+        // 20px of finger movement = 1 wheel detent (adjustable via scrollSpeed in ViewModel).
+        accumScroll += dy / 20f
+        val steps = accumScroll.toInt()
+        if (steps != 0) {
+            accumScroll -= steps
+            ev(EV_REL, REL_WHEEL, -steps)
+            sync()
+        }
     }
 
     override fun destroy() {
