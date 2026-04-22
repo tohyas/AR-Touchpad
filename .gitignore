@@ -11,3 +11,4 @@ cmd.txt
 .idea/
 .DS_Store
 captures/
+.claude/

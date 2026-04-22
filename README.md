@@ -87,4 +87,6 @@ The NDK CMake build compiles `libartouchpad.so` for `arm64-v8a` automatically.
 
 ## License
 
-MIT
+Copyright 2026 Paul Gratz
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
