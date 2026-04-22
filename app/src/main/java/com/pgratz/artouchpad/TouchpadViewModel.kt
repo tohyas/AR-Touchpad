@@ -41,8 +41,8 @@ data class TouchpadState(
     val targetDisplay: DisplayInfo? = null,
     val cursorX: Float = 0f,
     val cursorY: Float = 0f,
-    val sensitivity: Float = 1.5f,
-    val scrollSpeed: Float = 1.0f,
+    val sensitivity: Float = 1.2f,
+    val scrollSpeed: Float = 0.8f,
     val naturalScroll: Boolean = true,
     val showSettings: Boolean = false,
     val touchMode: TouchMode = TouchMode.IDLE,
@@ -60,6 +60,9 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
 
     private val displayManager = app.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     val mouse = ShizukuMouseController()
+
+    private var fontScale = app.resources.configuration.fontScale
+    private var fontScaleAccum = 0f
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = refresh()
@@ -161,6 +164,16 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pressKey(linuxKeyCode: Int) = mouse.pressKey(linuxKeyCode)
     fun typeText(text: String) = mouse.typeText(text)
+
+    fun pinchZoom(dDist: Float) {
+        // ~500px of total spread = 1.0 scale change; apply in 0.05 steps to avoid jitter
+        fontScaleAccum += dDist / 500f
+        if (kotlin.math.abs(fontScaleAccum) >= 0.05f) {
+            fontScale = (fontScale + fontScaleAccum).coerceIn(0.85f, 1.5f)
+            fontScaleAccum = 0f
+            mouse.setFontScale(fontScale)
+        }
+    }
     fun toggleKeyboard() = _state.update { it.copy(showKeyboard = !it.showKeyboard) }
 
     // Dismiss the phone keyboard first, then inject text after a short delay so

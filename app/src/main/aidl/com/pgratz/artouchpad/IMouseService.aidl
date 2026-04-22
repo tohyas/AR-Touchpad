@@ -21,5 +21,6 @@ interface IMouseService {
     void scroll(float dx, float dy) = 4;
     void pressKey(int androidKeycode) = 5;
     void typeText(String text) = 6;
+    void setFontScale(float scale) = 7;
     void destroy() = 16777114;
 }

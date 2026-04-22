@@ -215,6 +215,18 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
+    override fun setFontScale(scale: Float) {
+        val clamped = scale.coerceIn(0.85f, 1.5f)
+        try {
+            Runtime.getRuntime().exec(
+                arrayOf("settings", "put", "system", "font_scale", "%.2f".format(clamped))
+            ).waitFor()
+            Log.d(TAG, "setFontScale $clamped")
+        } catch (e: Exception) {
+            Log.e(TAG, "setFontScale failed: $e")
+        }
+    }
+
     override fun destroy() {
         UinputNative.nClose()
         uinputReady = false

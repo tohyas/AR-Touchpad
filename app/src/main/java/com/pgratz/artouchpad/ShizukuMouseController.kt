@@ -35,7 +35,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(12)  // bumped — typeText via KeyCharacterMap + display-targeted injection
+        .version(13)  // bumped — setFontScale via shell settings command
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -124,5 +124,9 @@ class ShizukuMouseController {
 
     fun typeText(text: String) {
         runCatching { service?.typeText(text) }
+    }
+
+    fun setFontScale(scale: Float) {
+        runCatching { service?.setFontScale(scale) }
     }
 }

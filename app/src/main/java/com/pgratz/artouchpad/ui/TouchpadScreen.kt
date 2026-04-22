@@ -43,6 +43,7 @@ import com.pgratz.artouchpad.DisplayInfo
 import com.pgratz.artouchpad.TouchMode
 import com.pgratz.artouchpad.TouchpadViewModel
 import kotlin.math.abs
+import kotlin.math.sqrt
 
 
 private val BG = Color(0xFF0D1117)
@@ -76,7 +77,6 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
             shizukuPermission = state.shizukuPermission,
             mouseReady = state.mouseReady,
             serviceEnabled = state.isServiceEnabled,
-            allDisplays = state.allDisplays,
             targetDisplay = state.targetDisplay,
             touchMode = state.touchMode,
             onSettingsClick = viewModel::toggleSettings,
@@ -95,6 +95,8 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                 sensitivity = state.sensitivity,
                 scrollSpeed = state.scrollSpeed,
                 naturalScroll = state.naturalScroll,
+                allDisplays = state.allDisplays,
+                targetDisplay = state.targetDisplay,
                 onSensitivity = viewModel::setSensitivity,
                 onScrollSpeed = viewModel::setScrollSpeed,
                 onNaturalScroll = viewModel::setNaturalScroll,
@@ -109,6 +111,7 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                 onDoubleClick = { viewModel.performDoubleClick() },
                 onRightClick = { viewModel.performRightClick() },
                 onScroll = viewModel::performScroll,
+                onPinch = viewModel::pinchZoom,
                 onTouchModeChanged = viewModel::setTouchMode,
             )
             if (state.showKeyboard) {
@@ -134,7 +137,6 @@ private fun StatusBar(
     shizukuPermission: Boolean,
     mouseReady: Boolean,
     serviceEnabled: Boolean,
-    allDisplays: List<DisplayInfo>,
     targetDisplay: DisplayInfo?,
     touchMode: TouchMode,
     onSettingsClick: () -> Unit,
@@ -187,40 +189,6 @@ private fun StatusBar(
             }
         }
 
-        // Display debug panel — always visible so we can diagnose routing
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            if (allDisplays.isEmpty()) {
-                Text("No displays detected", color = Color(0xFFFF7043), fontSize = 11.sp)
-            } else {
-                allDisplays.forEach { d ->
-                    val isTarget = d.id == targetDisplay?.id
-                    val label = "Display ${d.id}: ${d.width}×${d.height}  ${d.name}"
-                    Text(
-                        if (isTarget) "▶ $label  ← targeting this" else "  $label",
-                        color = if (isTarget) ACCENT else TEXT_MUTED,
-                        fontSize = 11.sp,
-                    )
-                }
-            }
-            if (allDisplays.size == 1) {
-                Text(
-                    "Only 1 display seen — glasses may be in mirror mode. " +
-                    "Pull down notification shade and switch to Desktop / Extended mode.",
-                    color = Color(0xFFFFB300),
-                    fontSize = 11.sp,
-                )
-            }
-            if (targetDisplay == null && allDisplays.size > 1) {
-                Text("Multiple displays but no external found — unexpected", color = Color(0xFFFF7043), fontSize = 11.sp)
-            }
-        }
-
         HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
     }
 }
@@ -247,6 +215,7 @@ private fun TouchpadSurface(
     onDoubleClick: () -> Unit,
     onRightClick: () -> Unit,
     onScroll: (Float, Float) -> Unit,
+    onPinch: (Float) -> Unit,
     onTouchModeChanged: (TouchMode) -> Unit,
 ) {
     var touchPoints by remember { mutableStateOf(listOf<Offset>()) }
@@ -316,9 +285,16 @@ private fun TouchpadSurface(
                                         if (p0prev != null && p1prev != null && p0curr != null && p1curr != null) {
                                             val dx = ((p0curr.x - p0prev.x) + (p1curr.x - p1prev.x)) / 2f
                                             val dy = ((p0curr.y - p0prev.y) + (p1curr.y - p1prev.y)) / 2f
-                                            // No per-frame threshold: two fingers always means scroll.
-                                            // Sub-pixel amounts accumulate in MouseService.
-                                            if (dx != 0f || dy != 0f) {
+                                            val pdx = p1prev.x - p0prev.x; val pdy = p1prev.y - p0prev.y
+                                            val cdx = p1curr.x - p0curr.x; val cdy = p1curr.y - p0curr.y
+                                            val prevSpan = sqrt(pdx * pdx + pdy * pdy)
+                                            val currSpan = sqrt(cdx * cdx + cdy * cdy)
+                                            val dSpan = currSpan - prevSpan
+                                            // When fingers spread/contract more than they translate, it's a pinch.
+                                            // Otherwise treat as scroll.
+                                            if (abs(dSpan) > abs(dx) + abs(dy)) {
+                                                if (dSpan != 0f) { onPinch(dSpan); didMove = true }
+                                            } else if (dx != 0f || dy != 0f) {
                                                 onScroll(dx, dy)
                                                 onTouchModeChanged(TouchMode.SCROLL)
                                                 didMove = true
@@ -492,6 +468,8 @@ private fun SettingsPanel(
     sensitivity: Float,
     scrollSpeed: Float,
     naturalScroll: Boolean,
+    allDisplays: List<DisplayInfo>,
+    targetDisplay: DisplayInfo?,
     onSensitivity: (Float) -> Unit,
     onScrollSpeed: (Float) -> Unit,
     onNaturalScroll: (Boolean) -> Unit,
@@ -514,8 +492,8 @@ private fun SettingsPanel(
             }
         }
 
-        SettingSlider("Cursor Speed", sensitivity, 0.5f..6f, "%.1f×", onSensitivity)
-        SettingSlider("Scroll Speed", scrollSpeed, 0.5f..3f, "%.1f×", onScrollSpeed)
+        SettingSlider("Cursor Speed", sensitivity, 0.4f..2.0f, "%.1f×", onSensitivity)
+        SettingSlider("Scroll Speed", scrollSpeed, 0.3f..1.3f, "%.1f×", onScrollSpeed)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -538,6 +516,28 @@ private fun SettingsPanel(
             )
         }
 
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Displays", color = TEXT_MUTED, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            if (allDisplays.isEmpty()) {
+                Text("No displays detected", color = Color(0xFFFF7043), fontSize = 12.sp)
+            } else {
+                allDisplays.forEach { d ->
+                    val isTarget = d.id == targetDisplay?.id
+                    Text(
+                        if (isTarget) "▶ ${d.name}  ${d.width}×${d.height}" else "  ${d.name}  ${d.width}×${d.height}",
+                        color = if (isTarget) ACCENT else TEXT_MUTED,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+            if (allDisplays.size == 1) {
+                Text(
+                    "Only 1 display — glasses may be in mirror mode. Switch to Desktop/Extended.",
+                    color = Color(0xFFFFB300), fontSize = 11.sp,
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -547,6 +547,7 @@ private fun SettingsPanel(
             GestureHint("1 finger double-tap", "Double click")
             GestureHint("1 finger long-press", "Right click")
             GestureHint("2 finger drag", "Scroll")
+            GestureHint("2 finger pinch", "Zoom text")
         }
     }
 }
