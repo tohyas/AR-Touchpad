@@ -14,7 +14,9 @@
 
 package com.pgratz.artouchpad
 
+import android.os.SystemClock
 import android.util.Log
+import android.view.KeyEvent
 import android.view.MotionEvent
 
 /**
@@ -44,6 +46,27 @@ class MouseService : IMouseService.Stub() {
     private var accumY = 0f
     private var accumScroll = 0f
 
+    // Reflection handles for display-targeted key injection.
+    // injectInputEvent(event, mode) on InputManagerGlobal respects the displayId
+    // embedded in the event, routing the key to the focused window on that display.
+    private val imgClass by lazy {
+        runCatching { Class.forName("android.hardware.input.InputManagerGlobal") }.getOrNull()
+    }
+    private val imgInstance by lazy {
+        imgClass?.getMethod("getInstance")?.invoke(null)
+    }
+    private val imgInjectEvent by lazy {
+        imgClass?.getMethod("injectInputEvent",
+            android.view.InputEvent::class.java, Int::class.javaPrimitiveType)
+    }
+    private val setDisplayIdMethod by lazy {
+        runCatching {
+            android.view.InputEvent::class.java
+                .getDeclaredMethod("setDisplayId", Int::class.javaPrimitiveType)
+                .also { it.isAccessible = true }
+        }.getOrNull()
+    }
+
     init {
         initUinput()
     }
@@ -68,6 +91,9 @@ class MouseService : IMouseService.Stub() {
             ioctl(UI_SET_KEYBIT, BTN_LEFT)
             ioctl(UI_SET_KEYBIT, BTN_RIGHT)
             ioctl(UI_SET_KEYBIT, BTN_MIDDLE)
+            ioctl(UI_SET_KEYBIT, KEY_BACK)
+            ioctl(UI_SET_KEYBIT, KEY_HOME)
+            ioctl(UI_SET_KEYBIT, KEY_APPSWITCH)
 
             val n = UinputNative.nWriteDevInfo("AR Touchpad Mouse")
             if (n < 0) { Log.e(TAG, "nWriteDevInfo failed"); return }
@@ -128,6 +154,28 @@ class MouseService : IMouseService.Stub() {
         ev(EV_KEY, btn, 0); sync()
     }
 
+    // Takes an Android KeyEvent keycode (e.g. KeyEvent.KEYCODE_BACK = 4).
+    // Injects via InputManagerGlobal with the event's displayId set so the key
+    // lands on the focused window of the glasses display, not the phone.
+    override fun pressKey(androidKeycode: Int) {
+        val instance = imgInstance ?: run { Log.e(TAG, "InputManagerGlobal unavailable"); return }
+        val inject   = imgInjectEvent ?: run { Log.e(TAG, "injectInputEvent unavailable"); return }
+        val setDisp  = setDisplayIdMethod ?: run { Log.e(TAG, "setDisplayId unavailable"); return }
+        try {
+            val t = SystemClock.uptimeMillis()
+            val down = KeyEvent(t, t, KeyEvent.ACTION_DOWN, androidKeycode, 0)
+            setDisp.invoke(down, displayId)
+            inject.invoke(instance, down, 0 /*INJECT_INPUT_EVENT_MODE_ASYNC*/)
+            Thread.sleep(20)
+            val up = KeyEvent(t, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, androidKeycode, 0)
+            setDisp.invoke(up, displayId)
+            inject.invoke(instance, up, 0)
+            Log.d(TAG, "pressKey keycode=$androidKeycode displayId=$displayId")
+        } catch (e: Exception) {
+            Log.e(TAG, "pressKey $androidKeycode failed: $e")
+        }
+    }
+
     override fun scroll(dx: Float, dy: Float) {
         if (!uinputReady) return
         // 20px of finger movement = 1 wheel detent (adjustable via scrollSpeed in ViewModel).
@@ -157,6 +205,7 @@ class MouseService : IMouseService.Stub() {
         const val EV_SYN = 0; const val EV_KEY = 1; const val EV_REL = 2
         const val REL_X = 0; const val REL_Y = 1; const val REL_HWHEEL = 6; const val REL_WHEEL = 8
         const val BTN_LEFT = 0x110; const val BTN_RIGHT = 0x111; const val BTN_MIDDLE = 0x112
+        const val KEY_BACK = 158; const val KEY_HOME = 102; const val KEY_APPSWITCH = 580
         const val SYN_REPORT = 0
     }
 }

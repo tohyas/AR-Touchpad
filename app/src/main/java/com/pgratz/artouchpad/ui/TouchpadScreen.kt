@@ -70,12 +70,19 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
             shizukuAvailable = state.shizukuAvailable,
             shizukuPermission = state.shizukuPermission,
             mouseReady = state.mouseReady,
+            serviceEnabled = state.isServiceEnabled,
             allDisplays = state.allDisplays,
             targetDisplay = state.targetDisplay,
             touchMode = state.touchMode,
             onSettingsClick = viewModel::toggleSettings,
             onGrantShizuku = viewModel::requestShizukuPermission,
             onConnectMouse = { viewModel.mouse.bind() },
+            onEnableService = {
+                context.startActivity(
+                    android.content.Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            },
         )
 
         if (state.showSettings) {
@@ -100,10 +107,9 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                 onTouchModeChanged = viewModel::setTouchMode,
             )
             NavigationBar(
-                onBack = { viewModel.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) },
-                onHome = { viewModel.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) },
-                onRecents = { viewModel.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS) },
-                onScreenshot = { viewModel.performGlobalAction(AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT) },
+                onBack    = { viewModel.pressKey(android.view.KeyEvent.KEYCODE_BACK) },
+                onHome    = { viewModel.pressKey(android.view.KeyEvent.KEYCODE_HOME) },
+                onRecents = { viewModel.pressKey(android.view.KeyEvent.KEYCODE_APP_SWITCH) },
             )
         }
     }
@@ -114,12 +120,14 @@ private fun StatusBar(
     shizukuAvailable: Boolean,
     shizukuPermission: Boolean,
     mouseReady: Boolean,
+    serviceEnabled: Boolean,
     allDisplays: List<DisplayInfo>,
     targetDisplay: DisplayInfo?,
     touchMode: TouchMode,
     onSettingsClick: () -> Unit,
     onGrantShizuku: () -> Unit,
     onConnectMouse: () -> Unit,
+    onEnableService: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -134,6 +142,7 @@ private fun StatusBar(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     StatusDot(mouseReady, "Mouse")
                     StatusDot(targetDisplay != null, "Display")
+                    StatusDot(serviceEnabled, "Nav")
                     if (touchMode != TouchMode.IDLE) {
                         Text(
                             if (touchMode == TouchMode.SCROLL) "↕ scroll" else "⊹ cursor",
@@ -153,6 +162,10 @@ private fun StatusBar(
                     !mouseReady ->
                         TextButton(onClick = onConnectMouse, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
                             Text("Connect", color = Color(0xFFFFB300), fontSize = 12.sp)
+                        }
+                    !serviceEnabled ->
+                        TextButton(onClick = onEnableService, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                            Text("Enable Nav", color = Color(0xFFFFB300), fontSize = 12.sp)
                         }
                 }
                 IconButton(onClick = onSettingsClick) {
@@ -374,7 +387,6 @@ private fun NavigationBar(
     onBack: () -> Unit,
     onHome: () -> Unit,
     onRecents: () -> Unit,
-    onScreenshot: () -> Unit,
 ) {
     HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
     Row(
@@ -387,7 +399,6 @@ private fun NavigationBar(
         NavButton("◀", "Back", onBack)
         NavButton("⬤", "Home", onHome)
         NavButton("▦", "Apps", onRecents)
-        NavButton("⬛", "Shot", onScreenshot)
     }
 }
 

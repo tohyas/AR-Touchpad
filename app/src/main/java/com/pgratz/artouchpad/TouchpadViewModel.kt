@@ -143,6 +143,8 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(touchMode = TouchMode.SCROLL) }
     }
 
+    fun pressKey(linuxKeyCode: Int) = mouse.pressKey(linuxKeyCode)
+
     fun performGlobalAction(action: Int) =
         TouchpadAccessibilityService.instance?.performGlobalAction(action)
 

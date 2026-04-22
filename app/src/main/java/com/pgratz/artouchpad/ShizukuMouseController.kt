@@ -35,7 +35,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(9)   // bumped — scroll accumulator, remove per-frame scroll threshold
+        .version(11)  // bumped — key injection via InputManagerGlobal+displayId (Android keycodes)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -116,5 +116,9 @@ class ShizukuMouseController {
 
     fun scroll(dx: Float, dy: Float) {
         runCatching { service?.scroll(dx, dy) }
+    }
+
+    fun pressKey(linuxKeyCode: Int) {
+        runCatching { service?.pressKey(linuxKeyCode) }
     }
 }
