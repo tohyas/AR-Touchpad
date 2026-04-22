@@ -37,6 +37,12 @@ class MouseService : IMouseService.Stub() {
 
     private var uinputReady = false
 
+    // Sub-pixel accumulators: carry fractional remainders between calls so that
+    // slow movements (e.g. 0.4 px/frame) accumulate cleanly instead of truncating
+    // to zero every frame and producing sudden jumps.
+    private var accumX = 0f
+    private var accumY = 0f
+
     init {
         initUinput()
     }
@@ -84,6 +90,8 @@ class MouseService : IMouseService.Stub() {
         displayHeight = height
         cursorX = width / 2f
         cursorY = height / 2f
+        accumX = 0f
+        accumY = 0f
 
         // Nudge the pointer to wake the cursor.
         if (uinputReady) {
@@ -96,11 +104,15 @@ class MouseService : IMouseService.Stub() {
 
     override fun moveMouse(dx: Float, dy: Float) {
         if (!uinputReady) return
-        val idx = dx.toInt()
-        val idy = dy.toInt()
+        accumX += dx
+        accumY += dy
+        val idx = accumX.toInt()
+        val idy = accumY.toInt()
         if (idx == 0 && idy == 0) return
-        cursorX = (cursorX + dx).coerceIn(0f, displayWidth - 1f)
-        cursorY = (cursorY + dy).coerceIn(0f, displayHeight - 1f)
+        accumX -= idx
+        accumY -= idy
+        cursorX = (cursorX + idx).coerceIn(0f, displayWidth - 1f)
+        cursorY = (cursorY + idy).coerceIn(0f, displayHeight - 1f)
         ev(EV_REL, REL_X, idx)
         ev(EV_REL, REL_Y, idy)
         sync()

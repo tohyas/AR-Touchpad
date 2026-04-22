@@ -35,7 +35,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(7)   // bumped — JNI uinput: bypasses missing Os.ioctl on Android 16
+        .version(8)   // bumped — sub-pixel accumulation in MouseService
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {

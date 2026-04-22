@@ -116,7 +116,7 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         val sens = _state.value.sensitivity
         val dx = rawDx * sens
         val dy = rawDy * sens
-        if (dx * dx + dy * dy < 1f) return
+        if (dx == 0f && dy == 0f) return
         mouse.moveMouse(dx, dy)
 
         val w = _state.value.displayWidth.toFloat()

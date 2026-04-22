@@ -273,8 +273,13 @@ private fun TouchpadSurface(
                                     if (last != null) {
                                         val dx = p.position.x - last.x
                                         val dy = p.position.y - last.y
-                                        if (abs(dx) > MOVE_THRESHOLD || abs(dy) > MOVE_THRESHOLD) {
+                                        // Threshold only gates the tap→drag transition.
+                                        // Once dragging, every delta is forwarded so slow
+                                        // movements aren't silently swallowed.
+                                        if (!didMove && (abs(dx) > MOVE_THRESHOLD || abs(dy) > MOVE_THRESHOLD)) {
                                             didMove = true
+                                        }
+                                        if (didMove) {
                                             onMoveCursor(dx, dy)
                                             onTouchModeChanged(TouchMode.CURSOR)
                                         }
