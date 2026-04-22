@@ -91,10 +91,6 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
         } else {
             TouchpadSurface(
                 modifier = Modifier.weight(1f),
-                cursorX = state.cursorX,
-                cursorY = state.cursorY,
-                displayWidth = state.displayWidth,
-                displayHeight = state.displayHeight,
                 enabled = state.mouseReady,
                 onMoveCursor = viewModel::moveCursor,
                 onClick = { viewModel.performClick() },
@@ -219,10 +215,6 @@ private fun StatusDot(active: Boolean, label: String) {
 @Composable
 private fun TouchpadSurface(
     modifier: Modifier,
-    cursorX: Float,
-    cursorY: Float,
-    displayWidth: Int,
-    displayHeight: Int,
     enabled: Boolean,
     onMoveCursor: (Float, Float) -> Unit,
     onClick: () -> Unit,
@@ -352,18 +344,6 @@ private fun TouchpadSurface(
             }
 
             if (!enabled) return@Canvas
-
-            // Cursor position indicator (scaled from external display coords)
-            if (displayWidth > 0 && displayHeight > 0) {
-                val cx = (cursorX / displayWidth) * size.width
-                val cy = (cursorY / displayHeight) * size.height
-                drawCircle(color = ACCENT.copy(alpha = 0.15f), radius = 16.dp.toPx(), center = Offset(cx, cy))
-                drawCircle(color = ACCENT.copy(alpha = 0.6f), radius = 4.dp.toPx(), center = Offset(cx, cy))
-                // Crosshair lines
-                val arm = 12.dp.toPx()
-                drawLine(ACCENT.copy(alpha = 0.4f), Offset(cx - arm, cy), Offset(cx + arm, cy), strokeWidth = 1.dp.toPx())
-                drawLine(ACCENT.copy(alpha = 0.4f), Offset(cx, cy - arm), Offset(cx, cy + arm), strokeWidth = 1.dp.toPx())
-            }
 
             // Live touch points
             touchPoints.forEach { pt ->
