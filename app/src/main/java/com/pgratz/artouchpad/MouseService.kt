@@ -16,6 +16,7 @@ package com.pgratz.artouchpad
 
 import android.os.SystemClock
 import android.util.Log
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
 
@@ -173,6 +174,32 @@ class MouseService : IMouseService.Stub() {
             Log.d(TAG, "pressKey keycode=$androidKeycode displayId=$displayId")
         } catch (e: Exception) {
             Log.e(TAG, "pressKey $androidKeycode failed: $e")
+        }
+    }
+
+    override fun typeText(text: String) {
+        val kcm = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
+        val events = kcm.getEvents(text.toCharArray())
+        if (events != null) {
+            injectKeyEvents(events)
+        } else {
+            for (ch in text) {
+                val evs = kcm.getEvents(charArrayOf(ch)) ?: continue
+                injectKeyEvents(evs)
+            }
+        }
+        Log.d(TAG, "typeText \"$text\" displayId=$displayId")
+    }
+
+    private fun injectKeyEvents(events: Array<out KeyEvent>) {
+        val instance = imgInstance ?: return
+        val inject   = imgInjectEvent ?: return
+        val setDisp  = setDisplayIdMethod ?: return
+        for (ev in events) {
+            val targeted = KeyEvent(ev.downTime, ev.eventTime, ev.action,
+                                    ev.keyCode, ev.repeatCount, ev.metaState)
+            setDisp.invoke(targeted, displayId)
+            inject.invoke(instance, targeted, 0)
         }
     }
 

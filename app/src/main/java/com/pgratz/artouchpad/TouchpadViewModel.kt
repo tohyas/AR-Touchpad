@@ -20,10 +20,13 @@ import android.hardware.display.DisplayManager
 import android.util.DisplayMetrics
 import android.view.Display
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 enum class TouchMode { IDLE, CURSOR, SCROLL }
 
@@ -43,6 +46,7 @@ data class TouchpadState(
     val naturalScroll: Boolean = true,
     val showSettings: Boolean = false,
     val touchMode: TouchMode = TouchMode.IDLE,
+    val showKeyboard: Boolean = false,
 ) {
     val externalDisplayConnected get() = targetDisplay != null
     val displayWidth get() = targetDisplay?.width ?: 1920
@@ -68,6 +72,18 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         displayManager.registerDisplayListener(displayListener, null)
         refresh()
         mouse.bind()
+        TouchpadAccessibilityService.onExternalTextFocus = {
+            if (!_state.value.showKeyboard) {
+                _state.update { it.copy(showKeyboard = true) }
+                // Dismiss the glasses-side IME that Android auto-showed.
+                // BACK is consumed by the IME (dismisses it) and never reaches the app,
+                // so Chrome's text field stays focused and ready for our injected text.
+                viewModelScope.launch {
+                    delay(400)
+                    mouse.pressKey(android.view.KeyEvent.KEYCODE_BACK)
+                }
+            }
+        }
     }
 
     fun refresh() {
@@ -144,6 +160,20 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pressKey(linuxKeyCode: Int) = mouse.pressKey(linuxKeyCode)
+    fun typeText(text: String) = mouse.typeText(text)
+    fun toggleKeyboard() = _state.update { it.copy(showKeyboard = !it.showKeyboard) }
+
+    // Dismiss the phone keyboard first, then inject text after a short delay so
+    // the IME session is fully torn down before key events are sent to the glasses.
+    fun sendKeyboardText(text: String) {
+        if (text.isEmpty()) { toggleKeyboard(); return }
+        toggleKeyboard()
+        viewModelScope.launch {
+            delay(200)
+            mouse.typeText(text)
+            mouse.pressKey(android.view.KeyEvent.KEYCODE_ENTER)
+        }
+    }
 
     fun performGlobalAction(action: Int) =
         TouchpadAccessibilityService.instance?.performGlobalAction(action)
@@ -154,6 +184,7 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleSettings() = _state.update { it.copy(showSettings = !it.showSettings) }
 
     override fun onCleared() {
+        TouchpadAccessibilityService.onExternalTextFocus = null
         displayManager.unregisterDisplayListener(displayListener)
         mouse.destroy()
     }

@@ -14,9 +14,12 @@
 
 package com.pgratz.artouchpad.ui
 
-import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.provider.Settings
+import android.view.KeyEvent as AKeyEvent
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -35,10 +38,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.pgratz.artouchpad.DisplayInfo
 import com.pgratz.artouchpad.TouchMode
 import com.pgratz.artouchpad.TouchpadViewModel
 import kotlin.math.abs
+
 
 private val BG = Color(0xFF0D1117)
 private val SURFACE = Color(0xFF1A2332)
@@ -106,10 +111,18 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                 onScroll = viewModel::performScroll,
                 onTouchModeChanged = viewModel::setTouchMode,
             )
+            if (state.showKeyboard) {
+                KeyboardProxy(
+                    onSend    = { text -> viewModel.sendKeyboardText(text) },
+                    onDismiss = viewModel::toggleKeyboard,
+                )
+            }
             NavigationBar(
-                onBack    = { viewModel.pressKey(android.view.KeyEvent.KEYCODE_BACK) },
-                onHome    = { viewModel.pressKey(android.view.KeyEvent.KEYCODE_HOME) },
-                onRecents = { viewModel.pressKey(android.view.KeyEvent.KEYCODE_APP_SWITCH) },
+                keyboardActive = state.showKeyboard,
+                onBack         = { viewModel.pressKey(AKeyEvent.KEYCODE_BACK) },
+                onHome         = { viewModel.pressKey(AKeyEvent.KEYCODE_HOME) },
+                onRecents      = { viewModel.pressKey(AKeyEvent.KEYCODE_APP_SWITCH) },
+                onToggleKeyboard = viewModel::toggleKeyboard,
             )
         }
     }
@@ -382,11 +395,71 @@ private fun TouchpadSurface(
     }
 }
 
+// Accumulates text on the phone (full Gboard features: swipe, autocorrect, etc.).
+// Injection to the glasses happens only after the phone keyboard is dismissed,
+// so the phone IME session is never disturbed by injected key events.
+@Composable
+private fun KeyboardProxy(
+    onSend: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val editRef = remember { mutableStateOf<EditText?>(null) }
+
+    val doSend: () -> Unit = {
+        val text = editRef.value?.text?.toString() ?: ""
+        editRef.value?.setText("")
+        onSend(text)
+    }
+
+    HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SURFACE)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                EditText(ctx).apply {
+                    hint = "Type here, then tap ↵"
+                    setHintTextColor(android.graphics.Color.parseColor("#546E7A"))
+                    setTextColor(android.graphics.Color.parseColor("#E0E0E0"))
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    isFocusable = true
+                    isFocusableInTouchMode = true
+                    maxLines = 2
+                    imeOptions = EditorInfo.IME_ACTION_SEND or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+                    setOnEditorActionListener { _, actionId, _ ->
+                        if (actionId == EditorInfo.IME_ACTION_SEND) { doSend(); true } else false
+                    }
+                }
+            },
+            update = { view ->
+                editRef.value = view
+                view.requestFocus()
+                val imm = view.context.getSystemService(InputMethodManager::class.java)
+                imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+            },
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = doSend, modifier = Modifier.size(40.dp)) {
+            Text("↵", color = ACCENT, fontSize = 20.sp)
+        }
+        IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+            Text("✕", color = TEXT_DIM, fontSize = 18.sp)
+        }
+    }
+}
+
 @Composable
 private fun NavigationBar(
+    keyboardActive: Boolean,
     onBack: () -> Unit,
     onHome: () -> Unit,
     onRecents: () -> Unit,
+    onToggleKeyboard: () -> Unit,
 ) {
     HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
     Row(
@@ -399,14 +472,16 @@ private fun NavigationBar(
         NavButton("◀", "Back", onBack)
         NavButton("⬤", "Home", onHome)
         NavButton("▦", "Apps", onRecents)
+        NavButton("⌨", "Keys", onToggleKeyboard,
+            tint = if (keyboardActive) ACCENT else NAV_ICON)
     }
 }
 
 @Composable
-private fun NavButton(icon: String, label: String, onClick: () -> Unit) {
+private fun NavButton(icon: String, label: String, onClick: () -> Unit, tint: Color = NAV_ICON) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         IconButton(onClick = onClick, modifier = Modifier.size(52.dp)) {
-            Text(icon, color = NAV_ICON, fontSize = 22.sp)
+            Text(icon, color = tint, fontSize = 22.sp)
         }
         Text(label, color = TEXT_MUTED, fontSize = 10.sp)
     }

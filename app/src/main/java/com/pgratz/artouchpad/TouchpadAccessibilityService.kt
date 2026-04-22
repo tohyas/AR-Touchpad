@@ -32,6 +32,9 @@ class TouchpadAccessibilityService : AccessibilityService() {
         var instance: TouchpadAccessibilityService? = null
             private set
 
+        // Invoked when an editable view on the external display gains focus.
+        var onExternalTextFocus: (() -> Unit)? = null
+
         var cursorX = 540f
         var cursorY = 960f
         var externalDisplayWidth = 1920
@@ -158,7 +161,17 @@ class TouchpadAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_FOCUSED) return
+        val source = event.source ?: return
+        if (!source.isEditable || !source.isVisibleToUser) return
+        val displayId = source.window?.displayId ?: Display.DEFAULT_DISPLAY
+        if (displayId != Display.DEFAULT_DISPLAY) {
+            onExternalTextFocus?.invoke()
+        }
+    }
+
     override fun onInterrupt() {}
 
     override fun onDestroy() {

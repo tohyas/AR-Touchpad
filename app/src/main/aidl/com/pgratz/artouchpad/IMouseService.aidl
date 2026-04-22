@@ -20,5 +20,6 @@ interface IMouseService {
     void click(float x, float y, int button) = 3;
     void scroll(float dx, float dy) = 4;
     void pressKey(int androidKeycode) = 5;
+    void typeText(String text) = 6;
     void destroy() = 16777114;
 }

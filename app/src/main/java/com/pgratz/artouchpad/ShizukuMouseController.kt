@@ -35,7 +35,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(11)  // bumped — key injection via InputManagerGlobal+displayId (Android keycodes)
+        .version(12)  // bumped — typeText via KeyCharacterMap + display-targeted injection
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -120,5 +120,9 @@ class ShizukuMouseController {
 
     fun pressKey(linuxKeyCode: Int) {
         runCatching { service?.pressKey(linuxKeyCode) }
+    }
+
+    fun typeText(text: String) {
+        runCatching { service?.typeText(text) }
     }
 }
