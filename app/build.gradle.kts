@@ -1,12 +1,29 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
+// Load signing credentials from local.properties (never committed to git).
+val localProps = Properties().also { props ->
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { props.load(it) }
+}
+
 android {
     namespace = "com.pgratz.artouchpad"
     compileSdk = 35
+
+    signingConfigs {
+        create("release") {
+            storeFile = file(localProps.getProperty("KEYSTORE_PATH", "release.jks"))
+            storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
+            keyAlias = localProps.getProperty("KEY_ALIAS", "artouchpad")
+            keyPassword = localProps.getProperty("KEY_PASSWORD", "")
+        }
+    }
 
     defaultConfig {
         applicationId = "com.pgratz.artouchpad"
@@ -26,6 +43,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -48,6 +66,12 @@ android {
         // aidl: generates IMouseService Java stubs from IMouseService.aidl, used for
         // IPC between the app process and the Shizuku UserService (MouseService).
         aidl = true
+    }
+
+    lint {
+        // BlockedPrivateApi: we deliberately access InputManagerGlobal.injectInputEvent and
+        // InputEvent.setDisplayId via reflection, bypassed at runtime by HiddenApiBypass.
+        disable += "BlockedPrivateApi"
     }
 
     externalNativeBuild {
