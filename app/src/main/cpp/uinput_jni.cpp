@@ -27,10 +27,18 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+// Persistent file descriptor for /dev/uinput, shared across all JNI calls.
+// A single global is safe because MouseService is a singleton Shizuku UserService —
+// only one instance exists per process lifetime.
 static int g_fd = -1;
 
 extern "C" {
 
+// Opens /dev/uinput for writing in non-blocking mode and stores the fd in g_fd.
+// Shell uid (granted by Shizuku) is in the `input` group which has rw access to
+// /dev/uinput, so no additional permissions are needed.
+// Returns: the fd on success (>= 0), or a negative errno on failure.
+// Must be called before any other nXxx functions.
 JNIEXPORT jint JNICALL
 Java_com_pgratz_artouchpad_UinputNative_nOpen(JNIEnv*, jclass) {
     g_fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
@@ -39,6 +47,11 @@ Java_com_pgratz_artouchpad_UinputNative_nOpen(JNIEnv*, jclass) {
     return g_fd;
 }
 
+// Calls ioctl(g_fd, request, value) to configure the uinput device before creation.
+// Used by MouseService.initUinput() for UI_SET_EVBIT / UI_SET_KEYBIT / UI_SET_RELBIT /
+// UI_DEV_CREATE. This JNI bridge exists because Android 16 removed the generic
+// Os.ioctl(fd, req, value) variant — only ioctlInt(fd, req) (no value arg) remains.
+// Returns: the ioctl return value (0 on success, negative on error).
 JNIEXPORT jint JNICALL
 Java_com_pgratz_artouchpad_UinputNative_nIoctl(JNIEnv*, jclass, jint request, jint value) {
     int ret = ioctl(g_fd, (unsigned long)request, (int)value);
@@ -46,6 +59,11 @@ Java_com_pgratz_artouchpad_UinputNative_nIoctl(JNIEnv*, jclass, jint request, ji
     return ret;
 }
 
+// Writes a uinput_user_dev struct to g_fd, setting the device name and a synthetic
+// USB bus/vendor/product identity. Must be called after all capability ioctls
+// (UI_SET_EVBIT etc.) and before the UI_DEV_CREATE ioctl.
+// name: device name visible in /proc/bus/input/devices and to Android InputReader.
+// Returns: bytes written on success (sizeof(uinput_user_dev)), negative on failure.
 JNIEXPORT jint JNICALL
 Java_com_pgratz_artouchpad_UinputNative_nWriteDevInfo(JNIEnv* env, jclass, jstring jname) {
     struct uinput_user_dev dev;
@@ -62,6 +80,11 @@ Java_com_pgratz_artouchpad_UinputNative_nWriteDevInfo(JNIEnv* env, jclass, jstri
     return (jint)n;
 }
 
+// Hot-path function: writes a single struct input_event{type, code, value} to g_fd.
+// Timestamps each event with gettimeofday so the kernel input layer sees valid timing.
+// Called once per EV_REL/EV_KEY event and once per EV_SYN/SYN_REPORT flush.
+// type/code/value: Linux input subsystem constants (EV_REL, REL_X, pixel delta, etc.).
+// Returns: bytes written on success (sizeof(input_event)), negative on failure.
 JNIEXPORT jint JNICALL
 Java_com_pgratz_artouchpad_UinputNative_nWriteEvent(JNIEnv*, jclass, jint type, jint code, jint value) {
     struct input_event ev;
@@ -77,6 +100,8 @@ Java_com_pgratz_artouchpad_UinputNative_nWriteEvent(JNIEnv*, jclass, jint type, 
     return (jint)n;
 }
 
+// Sends UI_DEV_DESTROY to unregister the virtual device from the Linux input subsystem,
+// then closes g_fd. Safe to call when g_fd is already -1 (no-op guard).
 JNIEXPORT void JNICALL
 Java_com_pgratz_artouchpad_UinputNative_nClose(JNIEnv*, jclass) {
     if (g_fd >= 0) {

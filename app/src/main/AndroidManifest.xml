@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Required to trigger the haptic feedback vibrator on click/right-click gestures. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
@@ -9,6 +10,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ARTouchpad">
 
+        <!-- Single-activity app; portrait-locked so the touchpad surface stays stable. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -20,6 +22,9 @@
             </intent-filter>
         </activity>
 
+        <!-- Shizuku content provider: required by the Shizuku library to communicate with
+             the Shizuku daemon. It handles the binder handshake so our app can bind
+             MouseService as a shell-uid UserService without needing root. -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"
@@ -27,6 +32,9 @@
             android:multiprocess="false"
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
+        <!-- Accessibility service used to dispatch touch gestures and detect text-field
+             focus on the glasses display. Gestures require BIND_ACCESSIBILITY_SERVICE;
+             configuration details are in res/xml/accessibility_service_config.xml. -->
         <service
             android:name=".TouchpadAccessibilityService"
             android:exported="true"

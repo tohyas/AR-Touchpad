@@ -22,10 +22,12 @@ import androidx.activity.viewModels
 import com.pgratz.artouchpad.ui.TouchpadScreen
 import com.pgratz.artouchpad.ui.theme.ARTouchpadTheme
 
+// Single-activity entry point. Hosts the Compose UI and owns the ViewModel lifecycle.
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TouchpadViewModel by viewModels()
 
+    // Sets up edge-to-edge display and mounts the full-screen TouchpadScreen composable.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -36,6 +38,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Re-checks display and Shizuku state when returning from Settings or the permission
+    // dialog, so the UI reflects any changes the user made while away.
     override fun onResume() {
         super.onResume()
         viewModel.refresh()

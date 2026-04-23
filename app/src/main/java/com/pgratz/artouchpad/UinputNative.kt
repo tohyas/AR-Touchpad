@@ -16,9 +16,16 @@ package com.pgratz.artouchpad
 
 import android.util.Log
 
+// Kotlin wrapper for the JNI functions in uinput_jni.cpp.
+// Declared as an object (singleton) so the native library is loaded exactly once.
 object UinputNative {
     private const val TAG = "UinputNative"
 
+    // Loads libartouchpad.so when the class is first accessed.
+    // Primary path: System.loadLibrary(), which works in the normal app process.
+    // Fallback: When running as a Shizuku UserService (shell uid), the process
+    // may not have the standard library search path configured, so we derive the
+    // .so location from the APK path and call System.load() with the full path.
     init {
         var ok = false
         try {
@@ -45,9 +52,14 @@ object UinputNative {
         if (ok) Log.i(TAG, "native library loaded")
     }
 
+    // Opens /dev/uinput; returns the fd (>= 0) on success or a negative value on failure.
     @JvmStatic external fun nOpen(): Int
+    // Calls ioctl(fd, request, value); returns 0 on success or negative on error.
     @JvmStatic external fun nIoctl(request: Int, value: Int): Int
+    // Writes the device name + USB identity struct to the uinput fd; returns bytes written.
     @JvmStatic external fun nWriteDevInfo(name: String): Int
+    // Writes one input_event{type, code, value} to the uinput fd; returns bytes written.
     @JvmStatic external fun nWriteEvent(type: Int, code: Int, value: Int): Int
+    // Sends UI_DEV_DESTROY and closes the uinput fd.
     @JvmStatic external fun nClose()
 }
