@@ -72,6 +72,9 @@ class MouseService : IMouseService.Stub() {
         initUinput()
     }
 
+    // Opens /dev/uinput via JNI, declares mouse capabilities (REL_X/Y, wheel, buttons),
+    // writes the device name, and issues UI_DEV_CREATE. Waits 400 ms for InputReader to
+    // enumerate the new device before marking uinputReady = true.
     private fun initUinput() {
         try {
             val fd = UinputNative.nOpen()
@@ -109,9 +112,13 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
+    // Writes a single struct input_event{type, code, value} to the open uinput fd via JNI.
     private fun ev(type: Int, code: Int, value: Int) = UinputNative.nWriteEvent(type, code, value)
+    // Flushes all buffered events to the input dispatcher with an EV_SYN/SYN_REPORT marker.
     private fun sync() = ev(EV_SYN, SYN_REPORT, 0)
 
+    // Stores the target display id and pixel dimensions; resets cursor to center and clears
+    // accumulators. Sends a 1-px nudge to wake the OS cursor on the new display.
     override fun setDisplay(id: Int, width: Int, height: Int) {
         displayId = id
         displayWidth = width
@@ -131,6 +138,9 @@ class MouseService : IMouseService.Stub() {
         Log.i(TAG, "setDisplay id=$id ${width}x${height} uinputReady=$uinputReady")
     }
 
+    // Accumulates fractional deltas in accumX/Y; only emits REL_X/REL_Y events for the
+    // whole-pixel portion, carrying the remainder forward. Also clamps the tracked cursor
+    // position to the display bounds so the ViewModel overlay stays in sync.
     override fun moveMouse(dx: Float, dy: Float) {
         if (!uinputReady) return
         accumX += dx
@@ -147,6 +157,8 @@ class MouseService : IMouseService.Stub() {
         sync()
     }
 
+    // Presses (value=1) then releases (value=0) BTN_LEFT or BTN_RIGHT with a 50 ms hold.
+    // x/y are accepted for interface symmetry but cursor position is already tracked by moveMouse.
     override fun click(x: Float, y: Float, button: Int) {
         if (!uinputReady) return
         val btn = if (button == MotionEvent.BUTTON_SECONDARY) BTN_RIGHT else BTN_LEFT
@@ -155,9 +167,10 @@ class MouseService : IMouseService.Stub() {
         ev(EV_KEY, btn, 0); sync()
     }
 
-    // Takes an Android KeyEvent keycode (e.g. KeyEvent.KEYCODE_BACK = 4).
-    // Injects via InputManagerGlobal with the event's displayId set so the key
-    // lands on the focused window of the glasses display, not the phone.
+    // Input: Android keycode (e.g. KeyEvent.KEYCODE_BACK = 4).
+    // Creates ACTION_DOWN + ACTION_UP KeyEvents, stamps each with the target displayId via
+    // InputEvent.setDisplayId reflection, then calls InputManagerGlobal.injectInputEvent so
+    // the key reaches the focused window on the glasses display rather than the phone.
     override fun pressKey(androidKeycode: Int) {
         val instance = imgInstance ?: run { Log.e(TAG, "InputManagerGlobal unavailable"); return }
         val inject   = imgInjectEvent ?: run { Log.e(TAG, "injectInputEvent unavailable"); return }
@@ -177,6 +190,9 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
+    // Input: a plain text string. Converts the full char array to a KeyEvent sequence via
+    // KeyCharacterMap.VIRTUAL_KEYBOARD; falls back to per-character conversion for strings
+    // that can't be mapped in one shot (e.g. mixed scripts). Delegates to injectKeyEvents.
     override fun typeText(text: String) {
         val kcm = KeyCharacterMap.load(KeyCharacterMap.VIRTUAL_KEYBOARD)
         val events = kcm.getEvents(text.toCharArray())
@@ -191,6 +207,9 @@ class MouseService : IMouseService.Stub() {
         Log.d(TAG, "typeText \"$text\" displayId=$displayId")
     }
 
+    // For each KeyEvent in the array, constructs a new event carrying the same action/keycode/
+    // meta state, stamps it with displayId via reflection, then calls injectInputEvent so it
+    // lands on the focused window of the target display.
     private fun injectKeyEvents(events: Array<out KeyEvent>) {
         val instance = imgInstance ?: return
         val inject   = imgInjectEvent ?: return
@@ -203,6 +222,9 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
+    // Input: dy = vertical finger-pixel delta (positive = fingers moving down).
+    // Converts dy to wheel detents at 20 px/detent using accumScroll; emits REL_WHEEL only
+    // for whole detents, carrying the sub-detent remainder forward. dx is unused (reserved).
     override fun scroll(dx: Float, dy: Float) {
         if (!uinputReady) return
         // 20px of finger movement = 1 wheel detent (adjustable via scrollSpeed in ViewModel).
@@ -215,6 +237,9 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
+    // Input: desired font scale (clamped internally to 0.85–1.5).
+    // Runs `settings put system font_scale <value>` as a subprocess; shell uid has permission
+    // to write system settings, so no additional privileges are needed.
     override fun setFontScale(scale: Float) {
         val clamped = scale.coerceIn(0.85f, 1.5f)
         try {
@@ -227,6 +252,8 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
+    // Closes the uinput file descriptor via JNI (sends UI_DEV_DESTROY internally) and marks
+    // the device unavailable so subsequent calls are no-ops rather than crashing.
     override fun destroy() {
         UinputNative.nClose()
         uinputReady = false

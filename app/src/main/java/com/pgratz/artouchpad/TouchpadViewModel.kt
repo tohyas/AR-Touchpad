@@ -89,6 +89,9 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // Enumerates all displays via DisplayManager; picks the first non-default display as the
+    // target (glasses). Updates state with display list, cursor center, and all status flags.
+    // Also calls setDisplay on MouseService so key/cursor events reach the right display.
     fun refresh() {
         val allDisplays = displayManager.displays.map { d ->
             val m = DisplayMetrics()
@@ -129,8 +132,12 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // Opens the Shizuku permission dialog so the user can grant shell-uid access.
     fun requestShizukuPermission() = mouse.requestPermission()
 
+    // Input: raw pixel deltas from the touch event.
+    // Scales by sensitivity, forwards to MouseService, and updates the tracked cursor
+    // position in state (used to draw the overlay dot and target clicks correctly).
     fun moveCursor(rawDx: Float, rawDy: Float) {
         val sens = _state.value.sensitivity
         val dx = rawDx * sens
@@ -149,12 +156,16 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // Updates touchMode in state, which drives the cursor/scroll indicator shown in the status bar.
     fun setTouchMode(mode: TouchMode) = _state.update { it.copy(touchMode = mode) }
 
+    // Delegate clicks to MouseService at the current tracked cursor position.
     fun performClick() = mouse.click(_state.value.cursorX, _state.value.cursorY)
     fun performDoubleClick() = mouse.doubleClick(_state.value.cursorX, _state.value.cursorY)
     fun performRightClick() = mouse.rightClick(_state.value.cursorX, _state.value.cursorY)
 
+    // Applies scrollSpeed multiplier and natural-scroll direction inversion, then
+    // forwards the adjusted delta to MouseService for wheel-detent conversion.
     fun performScroll(dx: Float, dy: Float) {
         val speed = _state.value.scrollSpeed
         val dir = if (_state.value.naturalScroll) 1f else -1f
@@ -162,9 +173,14 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(touchMode = TouchMode.SCROLL) }
     }
 
+    // Forwards an Android keycode to MouseService for injection on the glasses display.
     fun pressKey(linuxKeyCode: Int) = mouse.pressKey(linuxKeyCode)
+    // Converts text to key events and injects them to the focused window on the glasses display.
     fun typeText(text: String) = mouse.typeText(text)
 
+    // Input: dDist — change in pixel distance between two touch points this frame (positive = spread).
+    // Accumulates in fontScaleAccum; once 0.05 of scale change has built up, applies it to
+    // fontScale and calls setFontScale on the service (clamped to 0.85–1.5).
     fun pinchZoom(dDist: Float) {
         // ~500px of total spread = 1.0 scale change; apply in 0.05 steps to avoid jitter
         fontScaleAccum += dDist / 500f
@@ -174,10 +190,12 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
             mouse.setFontScale(fontScale)
         }
     }
+    // Toggles showKeyboard in state, which shows or hides the KeyboardProxy strip in the UI.
     fun toggleKeyboard() = _state.update { it.copy(showKeyboard = !it.showKeyboard) }
 
-    // Dismiss the phone keyboard first, then inject text after a short delay so
-    // the IME session is fully torn down before key events are sent to the glasses.
+    // Input: text accumulated in the phone keyboard proxy.
+    // Dismisses the phone keyboard first (to avoid IME session conflicts), waits 200 ms for
+    // the IME to tear down, then injects the text followed by Enter to the glasses display.
     fun sendKeyboardText(text: String) {
         if (text.isEmpty()) { toggleKeyboard(); return }
         toggleKeyboard()
@@ -188,14 +206,18 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // Delegates an AccessibilityService global action (e.g. GLOBAL_ACTION_BACK) to the service instance.
     fun performGlobalAction(action: Int) =
         TouchpadAccessibilityService.instance?.performGlobalAction(action)
 
+    // Settings state updaters — each writes one field into TouchpadState.
     fun setSensitivity(v: Float) = _state.update { it.copy(sensitivity = v) }
     fun setScrollSpeed(v: Float) = _state.update { it.copy(scrollSpeed = v) }
     fun setNaturalScroll(v: Boolean) = _state.update { it.copy(naturalScroll = v) }
     fun toggleSettings() = _state.update { it.copy(showSettings = !it.showSettings) }
 
+    // Cleans up the accessibility callback, display listener, and mouse service when the
+    // ViewModel is destroyed (e.g. app process ends or activity is permanently finished).
     override fun onCleared() {
         TouchpadAccessibilityService.onExternalTextFocus = null
         displayManager.unregisterDisplayListener(displayListener)

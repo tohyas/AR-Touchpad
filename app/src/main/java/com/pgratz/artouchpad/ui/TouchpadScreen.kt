@@ -61,6 +61,9 @@ private const val TAP_MAX_MS = 220L
 private const val LONG_PRESS_MS = 600L
 private const val DOUBLE_TAP_WINDOW_MS = 300L
 
+// Root composable. Collects ViewModel state and renders either SettingsPanel (when
+// showSettings is true) or the main layout: StatusBar → TouchpadSurface → optional
+// KeyboardProxy → NavigationBar.
 @Composable
 fun TouchpadScreen(viewModel: TouchpadViewModel) {
     val state by viewModel.state.collectAsState()
@@ -131,6 +134,9 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
     }
 }
 
+// Top status bar showing the app title, three status dots (Mouse/Display/Nav),
+// the current touch mode indicator, and contextual action buttons for each
+// unmet setup step (grant Shizuku → connect mouse → enable accessibility service).
 @Composable
 private fun StatusBar(
     shizukuAvailable: Boolean,
@@ -193,6 +199,8 @@ private fun StatusBar(
     }
 }
 
+// Small colored circle (green = active, gray = inactive) followed by a text label.
+// Used in StatusBar to show Mouse/Display/Nav readiness at a glance.
 @Composable
 private fun StatusDot(active: Boolean, label: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -206,6 +214,10 @@ private fun StatusDot(active: Boolean, label: String) {
     }
 }
 
+// The main touch surface. Intercepts raw pointer events with a single pointerInput handler:
+//   1 finger: tap (click), double-tap, long-press (right-click), or drag (cursor move).
+//   2 fingers: pinch (spread > translate → font zoom) or drag (translate > spread → scroll).
+// Renders a dot grid and live touch point indicators on a Canvas.
 @Composable
 private fun TouchpadSurface(
     modifier: Modifier,
@@ -371,9 +383,11 @@ private fun TouchpadSurface(
     }
 }
 
-// Accumulates text on the phone (full Gboard features: swipe, autocorrect, etc.).
-// Injection to the glasses happens only after the phone keyboard is dismissed,
-// so the phone IME session is never disturbed by injected key events.
+// A thin input strip containing an Android EditText that hosts the system keyboard (Gboard).
+// Text accumulates in the EditText; tapping ↵ or the send button calls onSend with the full
+// string so it can be injected to the glasses after the phone IME is dismissed.
+// Accumulates on the phone so Gboard swipe/autocorrect work normally without interfering
+// with the glasses display's IME session.
 @Composable
 private fun KeyboardProxy(
     onSend: (String) -> Unit,
@@ -429,6 +443,8 @@ private fun KeyboardProxy(
     }
 }
 
+// Bottom navigation row with four buttons: Back, Home, Apps (Recents), and keyboard toggle.
+// The keyboard button is tinted accent when the proxy is active.
 @Composable
 private fun NavigationBar(
     keyboardActive: Boolean,
@@ -453,6 +469,8 @@ private fun NavigationBar(
     }
 }
 
+// A centered icon + small label stacked in a column; tint defaults to NAV_ICON gray
+// but can be overridden (e.g. ACCENT) to indicate an active state.
 @Composable
 private fun NavButton(icon: String, label: String, onClick: () -> Unit, tint: Color = NAV_ICON) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -463,6 +481,9 @@ private fun NavButton(icon: String, label: String, onClick: () -> Unit, tint: Co
     }
 }
 
+// Full-screen settings overlay (shown instead of the touchpad when gear is tapped).
+// Contains cursor/scroll speed sliders, natural scroll toggle, connected display list,
+// and a gesture reference guide. Dismissed via the "Done" button.
 @Composable
 private fun SettingsPanel(
     sensitivity: Float,
@@ -552,6 +573,9 @@ private fun SettingsPanel(
     }
 }
 
+// A labeled Slider with the formatted current value displayed to its right.
+// label: display name; value/range: current value and allowed bounds; format: printf string
+// for the value (e.g. "%.1f×"); onChange: callback with the new float value.
 @Composable
 private fun SettingSlider(
     label: String,
@@ -578,6 +602,7 @@ private fun SettingSlider(
     }
 }
 
+// A single row in the gesture guide: gesture description on the left, resulting action on the right.
 @Composable
 private fun GestureHint(gesture: String, action: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

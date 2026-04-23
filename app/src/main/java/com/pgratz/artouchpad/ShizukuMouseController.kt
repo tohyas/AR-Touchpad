@@ -55,41 +55,54 @@ class ShizukuMouseController {
         onStateChanged?.invoke()
     }
 
+    // Stores the state-change callback and registers the Shizuku permission result listener
+    // so bind() is called automatically if the user grants permission while the app is open.
     fun init(onStateChanged: () -> Unit) {
         this.onStateChanged = onStateChanged
         Shizuku.addRequestPermissionResultListener(permissionListener)
     }
 
+    // Unregisters the permission listener and unbinds (and destroys) the UserService.
     fun destroy() {
         Shizuku.removeRequestPermissionResultListener(permissionListener)
         unbind()
     }
 
+    // Returns true if the Shizuku daemon is running and its binder is reachable.
     fun hasShizuku(): Boolean = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
 
+    // Returns true if Shizuku is running AND this app has been granted shell-uid permission.
     fun hasPermission(): Boolean =
         hasShizuku() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
 
+    // Opens Shizuku's permission dialog if the daemon is running but permission hasn't been granted.
     fun requestPermission() {
         if (hasShizuku() && !hasPermission()) Shizuku.requestPermission(1001)
     }
 
+    // Asks Shizuku to start MouseService as a shell-uid UserService and bind to it via
+    // the ServiceConnection. No-op if already connected or permission not granted.
     fun bind() {
         if (hasPermission() && !isConnected) {
             Shizuku.bindUserService(userServiceArgs, connection)
         }
     }
 
+    // Sends destroy + unbind to Shizuku and clears the local service reference.
     fun unbind() {
         if (isConnected) runCatching { Shizuku.unbindUserService(userServiceArgs, connection, true) }
         service = null
         isConnected = false
     }
 
+    // Forwards display id and pixel dimensions to MouseService so it can target
+    // cursor and key events at the correct display.
     fun setDisplay(displayId: Int, width: Int, height: Int) {
         runCatching { service?.setDisplay(displayId, width, height) }
     }
 
+    // Rate-limited to ~60 Hz to avoid flooding the IPC/input dispatcher;
+    // forwards relative pixel deltas to MouseService.
     fun moveMouse(dx: Float, dy: Float) {
         // Cap at ~60 Hz to avoid flooding the input dispatcher
         val now = System.currentTimeMillis()
@@ -98,14 +111,17 @@ class ShizukuMouseController {
         runCatching { service?.moveMouse(dx, dy) }
     }
 
+    // Single left-click at the current cursor position.
     fun click(x: Float, y: Float) {
         runCatching { service?.click(x, y, MotionEvent.BUTTON_PRIMARY) }
     }
 
+    // Single right-click (long-press gesture on touchscreens) at the current cursor position.
     fun rightClick(x: Float, y: Float) {
         runCatching { service?.click(x, y, MotionEvent.BUTTON_SECONDARY) }
     }
 
+    // Two left-clicks separated by a 120 ms sleep to satisfy double-click timing thresholds.
     fun doubleClick(x: Float, y: Float) {
         runCatching {
             service?.click(x, y, MotionEvent.BUTTON_PRIMARY)
@@ -114,18 +130,22 @@ class ShizukuMouseController {
         }
     }
 
+    // Forwards scroll deltas (finger pixels) to MouseService for wheel-detent conversion.
     fun scroll(dx: Float, dy: Float) {
         runCatching { service?.scroll(dx, dy) }
     }
 
+    // Injects an Android keycode (e.g. KEYCODE_BACK) targeted at the glasses display.
     fun pressKey(linuxKeyCode: Int) {
         runCatching { service?.pressKey(linuxKeyCode) }
     }
 
+    // Converts a text string to KeyEvents and injects them to the glasses display.
     fun typeText(text: String) {
         runCatching { service?.typeText(text) }
     }
 
+    // Sets the system font_scale via shell `settings put`, clamped 0.85–1.5.
     fun setFontScale(scale: Float) {
         runCatching { service?.setFontScale(scale) }
     }
