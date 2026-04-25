@@ -62,6 +62,8 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     val mouse = ShizukuMouseController()
 
     private var pinchAccum = 0f
+    private var smoothDx = 0f
+    private var smoothDy = 0f
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = refresh()
@@ -135,12 +137,18 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     fun requestShizukuPermission() = mouse.requestPermission()
 
     // Input: raw pixel deltas from the touch event.
-    // Scales by sensitivity, forwards to MouseService, and updates the tracked cursor
-    // position in state (used to draw the overlay dot and target clicks correctly).
+    // Applies velocity-adaptive exponential smoothing (heavy for slow/fine moves,
+    // light for fast moves) before scaling by sensitivity. This suppresses finger
+    // tremor on precise movements without adding noticeable lag on fast sweeps.
     fun moveCursor(rawDx: Float, rawDy: Float) {
+        val speed = kotlin.math.sqrt(rawDx * rawDx + rawDy * rawDy)
+        val alpha = (speed / 8f).coerceIn(0.30f, 0.85f)
+        smoothDx = alpha * rawDx + (1f - alpha) * smoothDx
+        smoothDy = alpha * rawDy + (1f - alpha) * smoothDy
+
         val sens = _state.value.sensitivity
-        val dx = rawDx * sens
-        val dy = rawDy * sens
+        val dx = smoothDx * sens
+        val dy = smoothDy * sens
         if (dx == 0f && dy == 0f) return
         mouse.moveMouse(dx, dy)
 
@@ -156,7 +164,11 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // Updates touchMode in state, which drives the cursor/scroll indicator shown in the status bar.
-    fun setTouchMode(mode: TouchMode) = _state.update { it.copy(touchMode = mode) }
+    // Resets the smoothing filter on IDLE so the decaying tail doesn't bleed into the next touch.
+    fun setTouchMode(mode: TouchMode) {
+        if (mode == TouchMode.IDLE) { smoothDx = 0f; smoothDy = 0f }
+        _state.update { it.copy(touchMode = mode) }
+    }
 
     // Delegate clicks to MouseService at the current tracked cursor position.
     fun performClick() = mouse.click(_state.value.cursorX, _state.value.cursorY)

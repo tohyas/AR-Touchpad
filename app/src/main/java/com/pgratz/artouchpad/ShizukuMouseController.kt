@@ -29,6 +29,8 @@ class ShizukuMouseController {
     private var service: IMouseService? = null
     private var onStateChanged: (() -> Unit)? = null
     private var lastMoveMs = 0L
+    private var pendingDx = 0f
+    private var pendingDy = 0f
 
     private val userServiceArgs = Shizuku.UserServiceArgs(
         ComponentName("com.pgratz.artouchpad", MouseService::class.java.name)
@@ -101,14 +103,18 @@ class ShizukuMouseController {
         runCatching { service?.setDisplay(displayId, width, height) }
     }
 
-    // Rate-limited to ~60 Hz to avoid flooding the IPC/input dispatcher;
-    // forwards relative pixel deltas to MouseService.
+    // Rate-limits IPC to ~60 Hz but accumulates deltas so no motion is lost between
+    // allowed frames. Without accumulation, high-Hz touch input (90/120 Hz) would
+    // silently drop half the events, causing jitter on slow/precise movements.
     fun moveMouse(dx: Float, dy: Float) {
-        // Cap at ~60 Hz to avoid flooding the input dispatcher
+        pendingDx += dx
+        pendingDy += dy
         val now = System.currentTimeMillis()
         if (now - lastMoveMs < 16L) return
         lastMoveMs = now
-        runCatching { service?.moveMouse(dx, dy) }
+        val sendX = pendingDx; val sendY = pendingDy
+        pendingDx = 0f; pendingDy = 0f
+        runCatching { service?.moveMouse(sendX, sendY) }
     }
 
     // Single left-click at the current cursor position.
