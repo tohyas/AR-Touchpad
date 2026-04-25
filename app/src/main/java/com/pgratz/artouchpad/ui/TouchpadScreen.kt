@@ -619,7 +619,7 @@ private fun SettingsPanel(
             GestureHint("1 finger long-press", "Right click")
             GestureHint("1 finger long-press + drag", "Select text")
             GestureHint("2 finger drag", "Scroll")
-            GestureHint("2 finger pinch", "Zoom text")
+            GestureHint("2 finger pinch", "Zoom page")
         }
     }
 }

@@ -61,8 +61,7 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     private val displayManager = app.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     val mouse = ShizukuMouseController()
 
-    private var fontScale = app.resources.configuration.fontScale
-    private var fontScaleAccum = 0f
+    private var pinchAccum = 0f
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = refresh()
@@ -188,16 +187,15 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     // Converts text to key events and injects them to the focused window on the glasses display.
     fun typeText(text: String) = mouse.typeText(text)
 
-    // Input: dDist — change in pixel distance between two touch points this frame (positive = spread).
-    // Accumulates in fontScaleAccum; once 0.05 of scale change has built up, applies it to
-    // fontScale and calls setFontScale on the service (clamped to 0.85–1.5).
+    // Input: dDist — span change in pixels this frame (positive = spreading = zoom in).
+    // Accumulates until 200 px threshold to avoid jitter; each 200 px = 1 AXIS_VSCROLL detent,
+    // which Chrome/WebView maps to one zoom step (~10%) without affecting the system font scale.
     fun pinchZoom(dDist: Float) {
-        // ~500px of total spread = 1.0 scale change; apply in 0.05 steps to avoid jitter
-        fontScaleAccum += dDist / 500f
-        if (kotlin.math.abs(fontScaleAccum) >= 0.05f) {
-            fontScale = (fontScale + fontScaleAccum).coerceIn(0.85f, 1.5f)
-            fontScaleAccum = 0f
-            mouse.setFontScale(fontScale)
+        pinchAccum += dDist
+        val detents = (pinchAccum / 200f).toInt()
+        if (detents != 0) {
+            pinchAccum -= detents * 200f
+            mouse.ctrlScroll(detents.toFloat())
         }
     }
     // Toggles showKeyboard in state, which shows or hides the KeyboardProxy strip in the UI.

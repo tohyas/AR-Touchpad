@@ -16,6 +16,7 @@ package com.pgratz.artouchpad
 
 import android.os.SystemClock
 import android.util.Log
+import android.view.InputDevice
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -279,6 +280,38 @@ class MouseService : IMouseService.Stub() {
             Log.d(TAG, "pressKeyWithCtrl keycode=$keycode displayId=$displayId")
         } catch (e: Exception) {
             Log.e(TAG, "pressKeyWithCtrl failed: $e")
+        }
+    }
+
+    // Injects a Ctrl+scroll MotionEvent (ACTION_SCROLL + META_CTRL_ON + AXIS_VSCROLL) at the
+    // tracked cursor position. Chrome and WebView-based apps zoom their page content in response;
+    // positive amount = zoom in, negative = zoom out. Does not affect the system font scale.
+    override fun ctrlScroll(amount: Float) {
+        val instance = imgInstance ?: run { Log.e(TAG, "InputManagerGlobal unavailable"); return }
+        val inject   = imgInjectEvent ?: run { Log.e(TAG, "injectInputEvent unavailable"); return }
+        val setDisp  = setDisplayIdMethod ?: run { Log.e(TAG, "setDisplayId unavailable"); return }
+        try {
+            val t = SystemClock.uptimeMillis()
+            val ctrlMeta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+
+            val props = arrayOf(MotionEvent.PointerProperties().apply {
+                id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE
+            })
+            val coords = arrayOf(MotionEvent.PointerCoords().apply {
+                x = cursorX; y = cursorY; pressure = 0f; size = 0f
+                setAxisValue(MotionEvent.AXIS_VSCROLL, amount)
+            })
+            val event = MotionEvent.obtain(
+                t, t, MotionEvent.ACTION_SCROLL,
+                1, props, coords,
+                ctrlMeta, 0, 1f, 1f, -1, 0, InputDevice.SOURCE_MOUSE, 0
+            )
+            setDisp.invoke(event, displayId)
+            inject.invoke(instance, event, 0)
+            event.recycle()
+            Log.d(TAG, "ctrlScroll $amount displayId=$displayId")
+        } catch (e: Exception) {
+            Log.e(TAG, "ctrlScroll failed: $e")
         }
     }
 

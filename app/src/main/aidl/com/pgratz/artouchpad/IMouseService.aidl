@@ -52,6 +52,11 @@ interface IMouseService {
     // after a text selection drag without moving the cursor.
     void pressKeyWithCtrl(int keycode) = 10;
 
+    // Injects a Ctrl+scroll MotionEvent at the current cursor position so Chrome and
+    // WebView-based apps zoom their content without changing the system font scale.
+    // amount: AXIS_VSCROLL value (positive = zoom in, negative = zoom out).
+    void ctrlScroll(float amount) = 11;
+
     // Closes the uinput file descriptor and marks the device not ready.
     void destroy() = 16777114;
 }
