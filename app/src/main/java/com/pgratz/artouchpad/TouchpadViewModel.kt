@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-enum class TouchMode { IDLE, CURSOR, SCROLL }
+enum class TouchMode { IDLE, CURSOR, SCROLL, SELECT }
 
 data class DisplayInfo(val id: Int, val name: String, val width: Int, val height: Int)
 
@@ -43,7 +43,7 @@ data class TouchpadState(
     val cursorY: Float = 0f,
     val sensitivity: Float = 1.2f,
     val scrollSpeed: Float = 0.8f,
-    val naturalScroll: Boolean = true,
+    val naturalScroll: Boolean = false,
     val showSettings: Boolean = false,
     val touchMode: TouchMode = TouchMode.IDLE,
     val showKeyboard: Boolean = false,
@@ -163,6 +163,16 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     fun performClick() = mouse.click(_state.value.cursorX, _state.value.cursorY)
     fun performDoubleClick() = mouse.doubleClick(_state.value.cursorX, _state.value.cursorY)
     fun performRightClick() = mouse.rightClick(_state.value.cursorX, _state.value.cursorY)
+
+    // Presses BTN_LEFT without releasing; moveCursor calls while held extend a text selection.
+    fun startSelectDrag() = mouse.mouseDown()
+
+    // Releases BTN_LEFT to end the selection drag, then immediately injects Ctrl+C to copy
+    // the selection into the clipboard before any cursor movement can clear it.
+    fun endSelectDrag() {
+        mouse.mouseUp()
+        mouse.pressKeyWithCtrl(android.view.KeyEvent.KEYCODE_C)
+    }
 
     // Applies scrollSpeed multiplier and natural-scroll direction inversion, then
     // forwards the adjusted delta to MouseService for wheel-detent conversion.

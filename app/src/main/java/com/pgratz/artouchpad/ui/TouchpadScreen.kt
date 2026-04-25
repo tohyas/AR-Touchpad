@@ -34,7 +34,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,6 +46,10 @@ import com.pgratz.artouchpad.TouchMode
 import com.pgratz.artouchpad.TouchpadViewModel
 import kotlin.math.abs
 import kotlin.math.sqrt
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 
 private val BG = Color(0xFF0D1117)
@@ -116,6 +122,8 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                 onScroll = viewModel::performScroll,
                 onPinch = viewModel::pinchZoom,
                 onTouchModeChanged = viewModel::setTouchMode,
+                onSelectStart = viewModel::startSelectDrag,
+                onSelectEnd = viewModel::endSelectDrag,
             )
             if (state.showKeyboard) {
                 KeyboardProxy(
@@ -164,12 +172,13 @@ private fun StatusBar(
                     StatusDot(mouseReady, "Mouse")
                     StatusDot(targetDisplay != null, "Display")
                     StatusDot(serviceEnabled, "Nav")
-                    if (touchMode != TouchMode.IDLE) {
-                        Text(
-                            if (touchMode == TouchMode.SCROLL) "↕ scroll" else "⊹ cursor",
-                            color = ACCENT, fontSize = 11.sp,
-                        )
+                    val modeLabel = when (touchMode) {
+                        TouchMode.SCROLL -> "↕ scroll"
+                        TouchMode.SELECT -> "⊹ select"
+                        TouchMode.CURSOR -> "⊹ cursor"
+                        TouchMode.IDLE   -> null
                     }
+                    modeLabel?.let { Text(it, color = ACCENT, fontSize = 11.sp) }
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -215,7 +224,8 @@ private fun StatusDot(active: Boolean, label: String) {
 }
 
 // The main touch surface. Intercepts raw pointer events with a single pointerInput handler:
-//   1 finger: tap (click), double-tap, long-press (right-click), or drag (cursor move).
+//   1 finger: tap (click), double-tap, long-press (right-click), long-press+drag (select text),
+//             or drag (cursor move).
 //   2 fingers: pinch (spread > translate → font zoom) or drag (translate > spread → scroll).
 // Renders a dot grid and live touch point indicators on a Canvas.
 @Composable
@@ -229,8 +239,11 @@ private fun TouchpadSurface(
     onScroll: (Float, Float) -> Unit,
     onPinch: (Float) -> Unit,
     onTouchModeChanged: (TouchMode) -> Unit,
+    onSelectStart: () -> Unit,
+    onSelectEnd: () -> Unit,
 ) {
     var touchPoints by remember { mutableStateOf(listOf<Offset>()) }
+    val haptic = LocalHapticFeedback.current
 
     Box(
         modifier = modifier.padding(12.dp),
@@ -248,94 +261,131 @@ private fun TouchpadSurface(
                     var downTime = 0L
                     var didMove = false
                     var lastTapTime = 0L
+                    var isLongPress = false
+                    var isSelectMode = false
+                    var longPressJob: Job? = null
 
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val now = System.currentTimeMillis()
-                            val pressed = event.changes.filter { it.pressed }
-                            val justPressed = event.changes.filter { it.pressed && !it.previousPressed }
-                            val justReleased = event.changes.filter { !it.pressed && it.previousPressed }
+                    coroutineScope {
+                        val scope = this  // CoroutineScope for launching the long-press timer
 
-                            touchPoints = pressed.map { it.position }
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val now = System.currentTimeMillis()
+                                val pressed = event.changes.filter { it.pressed }
+                                val justPressed = event.changes.filter { it.pressed && !it.previousPressed }
+                                val justReleased = event.changes.filter { !it.pressed && it.previousPressed }
 
-                            if (justPressed.isNotEmpty() && pressed.size == 1) {
-                                downTime = now
-                                didMove = false
-                                lastPositions = pressed.associate { it.id to it.position }
-                            }
+                                touchPoints = pressed.map { it.position }
 
-                            when (pressed.size) {
-                                1 -> {
-                                    val p = pressed.first()
-                                    val last = lastPositions[p.id]
-                                    if (last != null) {
-                                        val dx = p.position.x - last.x
-                                        val dy = p.position.y - last.y
-                                        // Threshold only gates the tap→drag transition.
-                                        // Once dragging, every delta is forwarded so slow
-                                        // movements aren't silently swallowed.
-                                        if (!didMove && (abs(dx) > MOVE_THRESHOLD || abs(dy) > MOVE_THRESHOLD)) {
-                                            didMove = true
-                                        }
-                                        if (didMove) {
-                                            onMoveCursor(dx, dy)
-                                            onTouchModeChanged(TouchMode.CURSOR)
-                                        }
-                                    }
+                                if (justPressed.isNotEmpty() && pressed.size == 1) {
+                                    longPressJob?.cancel()
+                                    isLongPress = false
+                                    isSelectMode = false
+                                    downTime = now
+                                    didMove = false
                                     lastPositions = pressed.associate { it.id to it.position }
-                                    p.consume()
+                                    // Timer fires after LONG_PRESS_MS if finger hasn't moved;
+                                    // haptic confirms entry; subsequent drag transitions into select mode.
+                                    longPressJob = scope.launch {
+                                        delay(LONG_PRESS_MS)
+                                        isLongPress = true
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
                                 }
-                                2 -> {
-                                    val newPositions = pressed.associate { it.id to it.position }
-                                    if (lastPositions.size == 2) {
-                                        val ids = pressed.map { it.id }
-                                        val p0prev = lastPositions[ids[0]]
-                                        val p1prev = lastPositions[ids[1]]
-                                        val p0curr = newPositions[ids[0]]
-                                        val p1curr = newPositions[ids[1]]
-                                        if (p0prev != null && p1prev != null && p0curr != null && p1curr != null) {
-                                            val dx = ((p0curr.x - p0prev.x) + (p1curr.x - p1prev.x)) / 2f
-                                            val dy = ((p0curr.y - p0prev.y) + (p1curr.y - p1prev.y)) / 2f
-                                            val pdx = p1prev.x - p0prev.x; val pdy = p1prev.y - p0prev.y
-                                            val cdx = p1curr.x - p0curr.x; val cdy = p1curr.y - p0curr.y
-                                            val prevSpan = sqrt(pdx * pdx + pdy * pdy)
-                                            val currSpan = sqrt(cdx * cdx + cdy * cdy)
-                                            val dSpan = currSpan - prevSpan
-                                            // When fingers spread/contract more than they translate, it's a pinch.
-                                            // Otherwise treat as scroll.
-                                            if (abs(dSpan) > abs(dx) + abs(dy)) {
-                                                if (dSpan != 0f) { onPinch(dSpan); didMove = true }
-                                            } else if (dx != 0f || dy != 0f) {
-                                                onScroll(dx, dy)
-                                                onTouchModeChanged(TouchMode.SCROLL)
+
+                                when (pressed.size) {
+                                    1 -> {
+                                        val p = pressed.first()
+                                        val last = lastPositions[p.id]
+                                        if (last != null) {
+                                            val dx = p.position.x - last.x
+                                            val dy = p.position.y - last.y
+                                            val moved = abs(dx) > MOVE_THRESHOLD || abs(dy) > MOVE_THRESHOLD
+
+                                            // After long press fired: first movement enters select mode
+                                            // (BTN_LEFT pressed; subsequent moves extend text selection).
+                                            if (isLongPress && !isSelectMode && moved) {
+                                                isSelectMode = true
                                                 didMove = true
+                                                onSelectStart()
+                                                onTouchModeChanged(TouchMode.SELECT)
+                                            }
+                                            // Before long press fires: movement cancels the timer → normal drag.
+                                            // Threshold only gates the tap→drag transition; once dragging,
+                                            // every delta is forwarded so slow movements aren't swallowed.
+                                            if (!didMove && moved && !isLongPress) {
+                                                didMove = true
+                                                longPressJob?.cancel()
+                                            }
+
+                                            if (isSelectMode || didMove) {
+                                                onMoveCursor(dx, dy)
+                                                if (!isSelectMode) onTouchModeChanged(TouchMode.CURSOR)
+                                            }
+                                        }
+                                        lastPositions = pressed.associate { it.id to it.position }
+                                        p.consume()
+                                    }
+                                    2 -> {
+                                        // Second finger cancels any in-progress select drag.
+                                        if (isSelectMode) { onSelectEnd(); isSelectMode = false }
+                                        longPressJob?.cancel()
+
+                                        val newPositions = pressed.associate { it.id to it.position }
+                                        if (lastPositions.size == 2) {
+                                            val ids = pressed.map { it.id }
+                                            val p0prev = lastPositions[ids[0]]
+                                            val p1prev = lastPositions[ids[1]]
+                                            val p0curr = newPositions[ids[0]]
+                                            val p1curr = newPositions[ids[1]]
+                                            if (p0prev != null && p1prev != null && p0curr != null && p1curr != null) {
+                                                val dx = ((p0curr.x - p0prev.x) + (p1curr.x - p1prev.x)) / 2f
+                                                val dy = ((p0curr.y - p0prev.y) + (p1curr.y - p1prev.y)) / 2f
+                                                val pdx = p1prev.x - p0prev.x; val pdy = p1prev.y - p0prev.y
+                                                val cdx = p1curr.x - p0curr.x; val cdy = p1curr.y - p0curr.y
+                                                val prevSpan = sqrt(pdx * pdx + pdy * pdy)
+                                                val currSpan = sqrt(cdx * cdx + cdy * cdy)
+                                                val dSpan = currSpan - prevSpan
+                                                // When fingers spread/contract more than they translate, it's a pinch.
+                                                // Otherwise treat as scroll.
+                                                if (abs(dSpan) > abs(dx) + abs(dy)) {
+                                                    if (dSpan != 0f) { onPinch(dSpan); didMove = true }
+                                                } else if (dx != 0f || dy != 0f) {
+                                                    onScroll(dx, dy)
+                                                    onTouchModeChanged(TouchMode.SCROLL)
+                                                    didMove = true
+                                                }
+                                            }
+                                        }
+                                        lastPositions = newPositions
+                                        pressed.forEach { it.consume() }
+                                    }
+                                }
+
+                                if (justReleased.isNotEmpty() && pressed.isEmpty()) {
+                                    val duration = now - downTime
+                                    longPressJob?.cancel()
+                                    onTouchModeChanged(TouchMode.IDLE)
+
+                                    when {
+                                        isSelectMode -> onSelectEnd()
+                                        !didMove && duration >= LONG_PRESS_MS -> onRightClick()
+                                        !didMove && duration < TAP_MAX_MS -> {
+                                            if (now - lastTapTime < DOUBLE_TAP_WINDOW_MS) {
+                                                onDoubleClick()
+                                                lastTapTime = 0L
+                                            } else {
+                                                onClick()
+                                                lastTapTime = now
                                             }
                                         }
                                     }
-                                    lastPositions = newPositions
-                                    pressed.forEach { it.consume() }
+                                    isLongPress = false
+                                    isSelectMode = false
+                                    lastPositions = emptyMap()
+                                    touchPoints = emptyList()
                                 }
-                            }
-
-                            if (justReleased.isNotEmpty() && pressed.isEmpty()) {
-                                val duration = now - downTime
-                                onTouchModeChanged(TouchMode.IDLE)
-
-                                when {
-                                    !didMove && duration >= LONG_PRESS_MS -> onRightClick()
-                                    !didMove && duration < TAP_MAX_MS -> {
-                                        if (now - lastTapTime < DOUBLE_TAP_WINDOW_MS) {
-                                            onDoubleClick()
-                                            lastTapTime = 0L
-                                        } else {
-                                            onClick()
-                                            lastTapTime = now
-                                        }
-                                    }
-                                }
-                                lastPositions = emptyMap()
-                                touchPoints = emptyList()
                             }
                         }
                     }
@@ -567,6 +617,7 @@ private fun SettingsPanel(
             GestureHint("1 finger tap", "Left click")
             GestureHint("1 finger double-tap", "Double click")
             GestureHint("1 finger long-press", "Right click")
+            GestureHint("1 finger long-press + drag", "Select text")
             GestureHint("2 finger drag", "Scroll")
             GestureHint("2 finger pinch", "Zoom text")
         }

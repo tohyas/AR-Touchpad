@@ -252,6 +252,51 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
+    // Input: Android keycode (e.g. KEYCODE_C). Injects Ctrl+keycode via InputManagerGlobal
+    // with META_CTRL_ON|META_CTRL_LEFT_ON so apps see a real Ctrl+key shortcut.
+    // Used for Copy/Cut/Paste/SelectAll after a text selection without moving the cursor.
+    override fun pressKeyWithCtrl(keycode: Int) {
+        val instance = imgInstance ?: run { Log.e(TAG, "InputManagerGlobal unavailable"); return }
+        val inject   = imgInjectEvent ?: run { Log.e(TAG, "injectInputEvent unavailable"); return }
+        val setDisp  = setDisplayIdMethod ?: run { Log.e(TAG, "setDisplayId unavailable"); return }
+        try {
+            val t = SystemClock.uptimeMillis()
+            val ctrlMeta = KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
+
+            val ctrlDown = KeyEvent(t, t, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0)
+            setDisp.invoke(ctrlDown, displayId); inject.invoke(instance, ctrlDown, 0)
+
+            val kDown = KeyEvent(t, t, KeyEvent.ACTION_DOWN, keycode, 0, ctrlMeta)
+            setDisp.invoke(kDown, displayId); inject.invoke(instance, kDown, 0)
+            Thread.sleep(20)
+
+            val kUp = KeyEvent(t, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, keycode, 0, ctrlMeta)
+            setDisp.invoke(kUp, displayId); inject.invoke(instance, kUp, 0)
+
+            val ctrlUp = KeyEvent(t, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0)
+            setDisp.invoke(ctrlUp, displayId); inject.invoke(instance, ctrlUp, 0)
+
+            Log.d(TAG, "pressKeyWithCtrl keycode=$keycode displayId=$displayId")
+        } catch (e: Exception) {
+            Log.e(TAG, "pressKeyWithCtrl failed: $e")
+        }
+    }
+
+    // Presses BTN_LEFT without releasing — the paired mouseUp() call ends the drag.
+    // Used for text selection: button held while moveMouse moves the cursor.
+    override fun mouseDown() {
+        if (!uinputReady) return
+        ev(EV_KEY, BTN_LEFT, 1); sync()
+        Log.d(TAG, "mouseDown displayId=$displayId")
+    }
+
+    // Releases BTN_LEFT previously pressed by mouseDown().
+    override fun mouseUp() {
+        if (!uinputReady) return
+        ev(EV_KEY, BTN_LEFT, 0); sync()
+        Log.d(TAG, "mouseUp displayId=$displayId")
+    }
+
     // Closes the uinput file descriptor via JNI (sends UI_DEV_DESTROY internally) and marks
     // the device unavailable so subsequent calls are no-ops rather than crashing.
     override fun destroy() {

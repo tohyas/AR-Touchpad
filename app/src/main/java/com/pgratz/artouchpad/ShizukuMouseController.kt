@@ -35,7 +35,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(13)  // bumped — setFontScale via shell settings command
+        .version(15)  // bumped — pressKeyWithCtrl for Copy/Cut/Paste/SelectAll after selection
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -149,4 +149,12 @@ class ShizukuMouseController {
     fun setFontScale(scale: Float) {
         runCatching { service?.setFontScale(scale) }
     }
+
+    // Presses BTN_LEFT without releasing — call moveMouse while held for click-drag selection.
+    fun mouseDown() { runCatching { service?.mouseDown() } }
+    // Releases BTN_LEFT pressed by mouseDown().
+    fun mouseUp()   { runCatching { service?.mouseUp() } }
+
+    // Injects Ctrl+keycode (e.g. KEYCODE_C for Copy) without moving the cursor.
+    fun pressKeyWithCtrl(keycode: Int) { runCatching { service?.pressKeyWithCtrl(keycode) } }
 }

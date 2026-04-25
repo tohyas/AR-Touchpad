@@ -43,6 +43,15 @@ interface IMouseService {
     // Shell uid has permission to write system settings without root.
     void setFontScale(float scale) = 7;
 
+    // Presses BTN_LEFT without releasing — used to begin a click-drag (text selection).
+    void mouseDown() = 8;
+    // Releases BTN_LEFT — used to end a click-drag (text selection).
+    void mouseUp() = 9;
+
+    // Injects Ctrl+keycode (Android keycode) via InputManagerGlobal — used for Copy/Cut/Paste/SelectAll
+    // after a text selection drag without moving the cursor.
+    void pressKeyWithCtrl(int keycode) = 10;
+
     // Closes the uinput file descriptor and marks the device not ready.
     void destroy() = 16777114;
 }
