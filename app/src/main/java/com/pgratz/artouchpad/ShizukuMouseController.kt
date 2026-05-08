@@ -122,7 +122,7 @@ class ShizukuMouseController {
         runCatching { service?.click(x, y, MotionEvent.BUTTON_PRIMARY) }
     }
 
-    // Single right-click (long-press gesture on touchscreens) at the current cursor position.
+    // Single right-click at the current cursor position.
     fun rightClick(x: Float, y: Float) {
         runCatching { service?.click(x, y, MotionEvent.BUTTON_SECONDARY) }
     }
