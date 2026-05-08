@@ -34,9 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.*
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -64,7 +62,6 @@ private val NAV_ICON = Color(0xFFB0BEC5)
 
 private const val MOVE_THRESHOLD = 5f
 private const val TAP_MAX_MS = 220L
-private const val LONG_PRESS_MS = 600L
 private const val DOUBLE_TAP_WINDOW_MS = 300L
 
 // Root composable. Collects ViewModel state and renders either SettingsPanel (when
@@ -224,9 +221,8 @@ private fun StatusDot(active: Boolean, label: String) {
 }
 
 // The main touch surface. Intercepts raw pointer events with a single pointerInput handler:
-//   1 finger: tap (click), double-tap, long-press (right-click), long-press+drag (select text),
-//             or drag (cursor move).
-//   2 fingers: pinch (spread > translate → font zoom) or drag (translate > spread → scroll).
+//   1 finger: tap (click), double-tap, double-tap+drag (left-button drag), or drag (cursor move).
+//   2 fingers: tap (right-click), pinch (spread > translate -> zoom), or drag (scroll).
 // Renders a dot grid and live touch point indicators on a Canvas.
 @Composable
 private fun TouchpadSurface(
@@ -243,7 +239,6 @@ private fun TouchpadSurface(
     onSelectEnd: () -> Unit,
 ) {
     var touchPoints by remember { mutableStateOf(listOf<Offset>()) }
-    val haptic = LocalHapticFeedback.current
 
     Box(
         modifier = modifier.padding(12.dp),
@@ -261,12 +256,17 @@ private fun TouchpadSurface(
                     var downTime = 0L
                     var didMove = false
                     var lastTapTime = 0L
-                    var isLongPress = false
-                    var isSelectMode = false
-                    var longPressJob: Job? = null
+                    var isSecondTap = false
+                    var isDragMode = false
+                    var maxPointers = 0
+                    var twoFingerDidMove = false
+                    var twoFingerAccumX = 0f
+                    var twoFingerAccumY = 0f
+                    var twoFingerAccumSpan = 0f
+                    var pendingClickJob: Job? = null
 
                     coroutineScope {
-                        val scope = this  // CoroutineScope for launching the long-press timer
+                        val scope = this
 
                         awaitPointerEventScope {
                             while (true) {
@@ -277,21 +277,31 @@ private fun TouchpadSurface(
                                 val justReleased = event.changes.filter { !it.pressed && it.previousPressed }
 
                                 touchPoints = pressed.map { it.position }
+                                if (pressed.isNotEmpty()) {
+                                    maxPointers = maxOf(maxPointers, pressed.size)
+                                }
 
                                 if (justPressed.isNotEmpty() && pressed.size == 1) {
-                                    longPressJob?.cancel()
-                                    isLongPress = false
-                                    isSelectMode = false
                                     downTime = now
                                     didMove = false
+                                    maxPointers = 1
+                                    twoFingerDidMove = false
+                                    twoFingerAccumX = 0f
+                                    twoFingerAccumY = 0f
+                                    twoFingerAccumSpan = 0f
+                                    isDragMode = false
+                                    isSecondTap = now - lastTapTime < DOUBLE_TAP_WINDOW_MS
+                                    if (isSecondTap) pendingClickJob?.cancel()
                                     lastPositions = pressed.associate { it.id to it.position }
-                                    // Timer fires after LONG_PRESS_MS if finger hasn't moved;
-                                    // haptic confirms entry; subsequent drag transitions into select mode.
-                                    longPressJob = scope.launch {
-                                        delay(LONG_PRESS_MS)
-                                        isLongPress = true
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    }
+                                } else if (justPressed.isNotEmpty() && pressed.size == 2) {
+                                    if (lastPositions.isEmpty()) downTime = now
+                                    pendingClickJob?.cancel()
+                                    isSecondTap = false
+                                    twoFingerDidMove = false
+                                    twoFingerAccumX = 0f
+                                    twoFingerAccumY = 0f
+                                    twoFingerAccumSpan = 0f
+                                    lastPositions = pressed.associate { it.id to it.position }
                                 }
 
                                 when (pressed.size) {
@@ -303,34 +313,34 @@ private fun TouchpadSurface(
                                             val dy = p.position.y - last.y
                                             val moved = abs(dx) > MOVE_THRESHOLD || abs(dy) > MOVE_THRESHOLD
 
-                                            // After long press fired: first movement enters select mode
-                                            // (BTN_LEFT pressed; subsequent moves extend text selection).
-                                            if (isLongPress && !isSelectMode && moved) {
-                                                isSelectMode = true
+                                            // Ignore movement from a remaining finger after a two-finger gesture.
+                                            if (maxPointers == 1 && !didMove && moved) {
                                                 didMove = true
-                                                onSelectStart()
-                                                onTouchModeChanged(TouchMode.SELECT)
-                                            }
-                                            // Before long press fires: movement cancels the timer → normal drag.
-                                            // Threshold only gates the tap→drag transition; once dragging,
-                                            // every delta is forwarded so slow movements aren't swallowed.
-                                            if (!didMove && moved && !isLongPress) {
-                                                didMove = true
-                                                longPressJob?.cancel()
+                                                if (isSecondTap) {
+                                                    isDragMode = true
+                                                    pendingClickJob?.cancel()
+                                                    lastTapTime = 0L
+                                                    onSelectStart()
+                                                }
                                             }
 
-                                            if (isSelectMode || didMove) {
+                                            if (maxPointers == 1 && (isDragMode || didMove)) {
                                                 onMoveCursor(dx, dy)
-                                                if (!isSelectMode) onTouchModeChanged(TouchMode.CURSOR)
+                                                if (isDragMode) {
+                                                    onTouchModeChanged(TouchMode.SELECT)
+                                                } else {
+                                                    onTouchModeChanged(TouchMode.CURSOR)
+                                                }
                                             }
                                         }
                                         lastPositions = pressed.associate { it.id to it.position }
                                         p.consume()
                                     }
                                     2 -> {
-                                        // Second finger cancels any in-progress select drag.
-                                        if (isSelectMode) { onSelectEnd(); isSelectMode = false }
-                                        longPressJob?.cancel()
+                                        if (isDragMode) {
+                                            onSelectEnd()
+                                            isDragMode = false
+                                        }
 
                                         val newPositions = pressed.associate { it.id to it.position }
                                         if (lastPositions.size == 2) {
@@ -347,14 +357,27 @@ private fun TouchpadSurface(
                                                 val prevSpan = sqrt(pdx * pdx + pdy * pdy)
                                                 val currSpan = sqrt(cdx * cdx + cdy * cdy)
                                                 val dSpan = currSpan - prevSpan
-                                                // When fingers spread/contract more than they translate, it's a pinch.
-                                                // Otherwise treat as scroll.
-                                                if (abs(dSpan) > abs(dx) + abs(dy)) {
-                                                    if (dSpan != 0f) { onPinch(dSpan); didMove = true }
-                                                } else if (dx != 0f || dy != 0f) {
-                                                    onScroll(dx, dy)
-                                                    onTouchModeChanged(TouchMode.SCROLL)
-                                                    didMove = true
+
+                                                twoFingerAccumX += dx
+                                                twoFingerAccumY += dy
+                                                twoFingerAccumSpan += dSpan
+                                                val translated = sqrt(twoFingerAccumX * twoFingerAccumX + twoFingerAccumY * twoFingerAccumY)
+                                                val movementStarted = translated > MOVE_THRESHOLD || abs(twoFingerAccumSpan) > MOVE_THRESHOLD
+                                                if (movementStarted) {
+                                                    twoFingerDidMove = true
+                                                }
+
+                                                if (twoFingerDidMove) {
+                                                    // When fingers spread/contract more than they translate, it's a pinch.
+                                                    // Otherwise treat as scroll, including horizontal scroll.
+                                                    if (abs(dSpan) > abs(dx) + abs(dy)) {
+                                                        if (dSpan != 0f) {
+                                                            onPinch(dSpan)
+                                                        }
+                                                    } else if (dx != 0f || dy != 0f) {
+                                                        onScroll(dx, dy)
+                                                        onTouchModeChanged(TouchMode.SCROLL)
+                                                    }
                                                 }
                                             }
                                         }
@@ -365,24 +388,35 @@ private fun TouchpadSurface(
 
                                 if (justReleased.isNotEmpty() && pressed.isEmpty()) {
                                     val duration = now - downTime
-                                    longPressJob?.cancel()
                                     onTouchModeChanged(TouchMode.IDLE)
 
                                     when {
-                                        isSelectMode -> onSelectEnd()
-                                        !didMove && duration >= LONG_PRESS_MS -> onRightClick()
-                                        !didMove && duration < TAP_MAX_MS -> {
-                                            if (now - lastTapTime < DOUBLE_TAP_WINDOW_MS) {
+                                        isDragMode -> onSelectEnd()
+                                        maxPointers == 2 && !twoFingerDidMove && duration < TAP_MAX_MS -> onRightClick()
+                                        maxPointers == 1 && !didMove && duration < TAP_MAX_MS -> {
+                                            if (isSecondTap) {
+                                                pendingClickJob?.cancel()
                                                 onDoubleClick()
                                                 lastTapTime = 0L
                                             } else {
-                                                onClick()
                                                 lastTapTime = now
+                                                pendingClickJob = scope.launch {
+                                                    delay(DOUBLE_TAP_WINDOW_MS)
+                                                    if (lastTapTime == now) {
+                                                        onClick()
+                                                        lastTapTime = 0L
+                                                    }
+                                                }
                                             }
                                         }
                                     }
-                                    isLongPress = false
-                                    isSelectMode = false
+                                    isSecondTap = false
+                                    isDragMode = false
+                                    maxPointers = 0
+                                    twoFingerDidMove = false
+                                    twoFingerAccumX = 0f
+                                    twoFingerAccumY = 0f
+                                    twoFingerAccumSpan = 0f
                                     lastPositions = emptyMap()
                                     touchPoints = emptyList()
                                 }
@@ -616,9 +650,9 @@ private fun SettingsPanel(
             GestureHint("1 finger drag", "Move cursor")
             GestureHint("1 finger tap", "Left click")
             GestureHint("1 finger double-tap", "Double click")
-            GestureHint("1 finger long-press", "Right click")
-            GestureHint("1 finger long-press + drag", "Select text")
-            GestureHint("2 finger drag", "Scroll")
+            GestureHint("1 finger double-tap + drag", "Drag")
+            GestureHint("2 finger tap", "Right click")
+            GestureHint("2 finger drag", "Scroll vertically/horizontally")
             GestureHint("2 finger pinch", "Zoom page")
         }
     }

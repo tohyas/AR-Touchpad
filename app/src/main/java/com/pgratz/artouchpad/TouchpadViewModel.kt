@@ -175,14 +175,12 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     fun performDoubleClick() = mouse.doubleClick(_state.value.cursorX, _state.value.cursorY)
     fun performRightClick() = mouse.rightClick(_state.value.cursorX, _state.value.cursorY)
 
-    // Presses BTN_LEFT without releasing; moveCursor calls while held extend a text selection.
+    // Presses BTN_LEFT without releasing; moveCursor calls while held perform a drag.
     fun startSelectDrag() = mouse.mouseDown()
 
-    // Releases BTN_LEFT to end the selection drag, then immediately injects Ctrl+C to copy
-    // the selection into the clipboard before any cursor movement can clear it.
+    // Releases BTN_LEFT to end a drag.
     fun endSelectDrag() {
         mouse.mouseUp()
-        mouse.pressKeyWithCtrl(android.view.KeyEvent.KEYCODE_C)
     }
 
     // Applies scrollSpeed multiplier and natural-scroll direction inversion, then

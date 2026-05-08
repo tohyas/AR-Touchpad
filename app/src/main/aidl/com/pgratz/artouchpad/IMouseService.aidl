@@ -28,7 +28,7 @@ interface IMouseService {
     void click(float x, float y, int button) = 3;
 
     // Scrolls the content under the cursor by (dx, dy) finger-pixel deltas.
-    // dy is converted to wheel detents; dx is reserved for horizontal scroll.
+    // dy is converted to REL_WHEEL detents; dx is converted to REL_HWHEEL detents.
     void scroll(float dx, float dy) = 4;
 
     // Injects a key press+release for the given Android keycode (e.g. KEYCODE_BACK = 4)

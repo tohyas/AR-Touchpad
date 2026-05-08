@@ -47,6 +47,7 @@ class MouseService : IMouseService.Stub() {
     private var accumX = 0f
     private var accumY = 0f
     private var accumScroll = 0f
+    private var accumHScroll = 0f
 
     // Reflection handles for display-targeted key injection.
     // injectInputEvent(event, mode) on InputManagerGlobal respects the displayId
@@ -129,6 +130,7 @@ class MouseService : IMouseService.Stub() {
         accumX = 0f
         accumY = 0f
         accumScroll = 0f
+        accumHScroll = 0f
 
         // Nudge the pointer to wake the cursor.
         if (uinputReady) {
@@ -223,17 +225,20 @@ class MouseService : IMouseService.Stub() {
         }
     }
 
-    // Input: dy = vertical finger-pixel delta (positive = fingers moving down).
-    // Converts dy to wheel detents at 20 px/detent using accumScroll; emits REL_WHEEL only
-    // for whole detents, carrying the sub-detent remainder forward. dx is unused (reserved).
+    // Input: finger-pixel deltas (positive = fingers moving down/right).
+    // Converts each axis to wheel detents at 20 px/detent and carries sub-detent remainders.
     override fun scroll(dx: Float, dy: Float) {
         if (!uinputReady) return
         // 20px of finger movement = 1 wheel detent (adjustable via scrollSpeed in ViewModel).
         accumScroll += dy / 20f
-        val steps = accumScroll.toInt()
-        if (steps != 0) {
-            accumScroll -= steps
-            ev(EV_REL, REL_WHEEL, -steps)
+        accumHScroll += dx / 20f
+        val vSteps = accumScroll.toInt()
+        val hSteps = accumHScroll.toInt()
+        if (vSteps != 0 || hSteps != 0) {
+            accumScroll -= vSteps
+            accumHScroll -= hSteps
+            if (vSteps != 0) ev(EV_REL, REL_WHEEL, -vSteps)
+            if (hSteps != 0) ev(EV_REL, REL_HWHEEL, hSteps)
             sync()
         }
     }
