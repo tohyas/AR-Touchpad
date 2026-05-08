@@ -131,6 +131,7 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                     onKey = viewModel::pressVirtualKey,
                     onChar = viewModel::sendRomajiKey,
                     onText = viewModel::sendRomajiSequence,
+                    onShiftLatchChanged = viewModel::setKeyboardShiftDown,
                     onDismiss = viewModel::toggleKeyboard,
                 )
             }
@@ -522,6 +523,7 @@ private fun VirtualKeyboardPanel(
     onKey: (VirtualKey) -> Unit,
     onChar: (Char, Boolean) -> Unit,
     onText: (String) -> Unit,
+    onShiftLatchChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     when (mode) {
@@ -548,6 +550,7 @@ private fun VirtualKeyboardPanel(
             mode = mode,
             onModeChange = onModeChange,
             onKey = onKey,
+            onShiftLatchChanged = onShiftLatchChanged,
         )
     }
 }
@@ -680,6 +683,7 @@ private fun EditingKeyboard(
     mode: VirtualKeyboardMode,
     onModeChange: (VirtualKeyboardMode) -> Unit,
     onKey: (VirtualKey) -> Unit,
+    onShiftLatchChanged: (Boolean) -> Unit,
 ) {
     var shiftLatched by rememberSaveable { mutableStateOf(false) }
     fun key(keyCode: Int, forceCtrl: Boolean = false) {
@@ -687,7 +691,6 @@ private fun EditingKeyboard(
             VirtualKey.AndroidKeyCode(
                 keyCode,
                 withCtrl = forceCtrl,
-                withShift = shiftLatched,
             ),
         )
     }
@@ -711,7 +714,11 @@ private fun EditingKeyboard(
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             EditKey("←", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_LEFT) }
-            EditKey("⇧", Modifier.weight(1f), selected = shiftLatched) { shiftLatched = !shiftLatched }
+            EditKey("⇧", Modifier.weight(1f), selected = shiftLatched) {
+                val next = !shiftLatched
+                shiftLatched = next
+                onShiftLatchChanged(next)
+            }
             EditKey("→", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_RIGHT) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1028,8 +1035,8 @@ private fun JapanesePunctuationKey(
     var drag by remember { mutableStateOf(Offset.Zero) }
     val direction = remember(drag) { drag.toFlickDirection() }
     fun sendPunctuation(dir: FlickDirection) = when (dir) {
-        FlickDirection.CENTER -> onChar('.', false)
-        FlickDirection.LEFT -> onChar(',', false)
+        FlickDirection.CENTER -> onChar(',', false)
+        FlickDirection.LEFT -> onChar('.', false)
         FlickDirection.UP -> onChar('?', false)
         FlickDirection.RIGHT -> onChar('!', false)
         FlickDirection.DOWN -> onText("...")

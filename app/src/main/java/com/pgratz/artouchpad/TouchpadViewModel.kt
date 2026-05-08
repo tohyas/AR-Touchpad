@@ -252,6 +252,15 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         pressVirtualKey(VirtualKey.AndroidKeyCode(KeyEvent.KEYCODE_V, withCtrl = true))
     }
 
+    fun setKeyboardShiftDown(down: Boolean) {
+        Log.d(KEYBOARD_TAG, "keyboard physical shift down=$down")
+        mouse.setKeyboardShiftDown(down)
+    }
+
+    fun releaseKeyboardModifiers() {
+        setKeyboardShiftDown(false)
+    }
+
     // Input: dDist — span change in pixels this frame (positive = spreading = zoom in).
     // Accumulates until 200 px threshold to avoid jitter; each 200 px = 1 AXIS_VSCROLL detent,
     // which Chrome/WebView maps to one zoom step (~10%) without affecting the system font scale.
@@ -267,12 +276,16 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleKeyboard() = _state.update {
         val willShow = !it.showKeyboard
         if (willShow) Log.d(KEYBOARD_TAG, "QWERTY keyboard opened")
+        if (!willShow) releaseKeyboardModifiers()
         it.copy(showKeyboard = willShow, keyboardMode = if (willShow) VirtualKeyboardMode.QWERTY else it.keyboardMode)
     }
 
     fun setKeyboardMode(mode: VirtualKeyboardMode) = _state.update {
         if (mode == VirtualKeyboardMode.QWERTY && !it.showKeyboard) {
             Log.d(KEYBOARD_TAG, "QWERTY keyboard opened")
+        }
+        if (it.keyboardMode == VirtualKeyboardMode.EDITING && mode != VirtualKeyboardMode.EDITING) {
+            releaseKeyboardModifiers()
         }
         it.copy(showKeyboard = true, keyboardMode = mode)
     }
@@ -304,6 +317,7 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         TouchpadAccessibilityService.onExternalTextFocus = null
         displayManager.unregisterDisplayListener(displayListener)
+        releaseKeyboardModifiers()
         mouse.destroy()
     }
 

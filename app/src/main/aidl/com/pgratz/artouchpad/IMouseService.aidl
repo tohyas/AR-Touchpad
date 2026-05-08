@@ -61,6 +61,9 @@ interface IMouseService {
     // Returns false if the keyboard device could not be created or the write failed.
     boolean pressHardwareKey(int linuxKeyCode, boolean withShift, boolean withCtrl) = 12;
 
+    // Physically holds or releases KEY_LEFTSHIFT on the virtual uinput keyboard.
+    void setKeyboardShiftDown(boolean down) = 13;
+
     // Closes the uinput file descriptor and marks the device not ready.
     void destroy() = 16777114;
 }

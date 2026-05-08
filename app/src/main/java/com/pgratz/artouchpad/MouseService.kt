@@ -41,6 +41,7 @@ class MouseService : IMouseService.Stub() {
 
     private var uinputReady = false
     private var keyboardUinputReady = false
+    private var keyboardShiftDown = false
 
     // Sub-pixel accumulators: carry fractional remainders between calls so that
     // slow movements (e.g. 0.4 px/frame) accumulate cleanly instead of truncating
@@ -190,6 +191,28 @@ class MouseService : IMouseService.Stub() {
         return keyboardUinputReady
     }
 
+    override fun setKeyboardShiftDown(down: Boolean) {
+        if (keyboardShiftDown == down) return
+        if (!ensureKeyboardDeviceReady()) {
+            Log.w(TAG, "uinput keyboard shift hold failed: keyboard unavailable down=$down")
+            if (!down) keyboardShiftDown = false
+            return
+        }
+        try {
+            keyEv(EV_KEY, KEY_LEFTSHIFT, if (down) 1 else 0)
+            keySync()
+            keyboardShiftDown = down
+            Log.d(TAG, "uinput keyboard shiftDown=$down")
+        } catch (e: Exception) {
+            Log.e(TAG, "uinput keyboard shift hold failed down=$down: $e")
+            if (down) runCatching {
+                keyEv(EV_KEY, KEY_LEFTSHIFT, 0)
+                keySync()
+            }
+            keyboardShiftDown = false
+        }
+    }
+
     // Stores the target display id and pixel dimensions; resets cursor to center and clears
     // accumulators. Sends a 1-px nudge to wake the OS cursor on the new display.
     override fun setDisplay(id: Int, width: Int, height: Int) {
@@ -299,7 +322,7 @@ class MouseService : IMouseService.Stub() {
                 ctrlPressed = ok
                 keySync()
             }
-            if (withShift && ok) {
+            if (withShift && !keyboardShiftDown && ok) {
                 ok = writeKey(EV_KEY, KEY_LEFTSHIFT, 1)
                 shiftPressed = ok
                 keySync()
@@ -326,7 +349,7 @@ class MouseService : IMouseService.Stub() {
             }
             ok
         } catch (e: Exception) {
-            if (withShift) runCatching { keyEv(EV_KEY, KEY_LEFTSHIFT, 0); keySync() }
+            if (withShift && !keyboardShiftDown) runCatching { keyEv(EV_KEY, KEY_LEFTSHIFT, 0); keySync() }
             if (withCtrl) runCatching { keyEv(EV_KEY, KEY_LEFTCTRL, 0); keySync() }
             Log.e(TAG, "uinput keyboard key failed key=$linuxKeyCode shift=$withShift ctrl=$withCtrl: $e")
             false
@@ -477,6 +500,14 @@ class MouseService : IMouseService.Stub() {
             ev(EV_KEY, BTN_LEFT, 0); sync()
             leftButtonDown = false
             Log.d(TAG, "mouseUp during destroy displayId=$displayId")
+        }
+        if (keyboardShiftDown) {
+            runCatching {
+                keyEv(EV_KEY, KEY_LEFTSHIFT, 0)
+                keySync()
+            }
+            keyboardShiftDown = false
+            Log.d(TAG, "keyboard shift released during destroy")
         }
         UinputNative.nClose()
         UinputNative.nKeyboardClose()
