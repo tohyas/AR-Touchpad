@@ -31,11 +31,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class TouchMode { IDLE, CURSOR, SCROLL, SELECT }
-enum class VirtualKeyboardMode { QWERTY, PASTE }
+enum class VirtualKeyboardMode { QWERTY, KANA, SYMBOLS, EDITING }
 
 sealed class VirtualKey {
     data class AndroidKeyCode(val keyCode: Int, val withCtrl: Boolean = false) : VirtualKey()
     data class AsciiChar(val char: Char, val withCtrl: Boolean = false) : VirtualKey()
+    data class HardwareKey(
+        val linuxKeyCode: Int,
+        val androidKeyCode: Int? = null,
+        val withShift: Boolean = false,
+        val withCtrl: Boolean = false,
+    ) : VirtualKey()
 }
 
 data class DisplayInfo(val id: Int, val name: String, val width: Int, val height: Int)
@@ -213,25 +219,20 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             is VirtualKey.AsciiChar -> typeAsciiChar(key.char, key.withCtrl)
+            is VirtualKey.HardwareKey -> pressHardwareKey(
+                linuxKeyCode = key.linuxKeyCode,
+                androidKeyCode = key.androidKeyCode,
+                withShift = key.withShift,
+                withCtrl = key.withCtrl,
+            )
         }
     }
 
     fun typeAsciiChar(char: Char, withCtrl: Boolean = false) {
-        val lower = char.lowercaseChar()
-        val pair = when (lower) {
-            in 'a'..'z' -> linuxLetterKeyCode(lower) to (KeyEvent.KEYCODE_A + (lower - 'a'))
-            in '0'..'9' -> linuxDigitKeyCode(lower) to (KeyEvent.KEYCODE_0 + (lower - '0'))
-            ' ' -> LINUX_KEY_SPACE to KeyEvent.KEYCODE_SPACE
-            '\n' -> LINUX_KEY_ENTER to KeyEvent.KEYCODE_ENTER
-            ',' -> LINUX_KEY_COMMA to KeyEvent.KEYCODE_COMMA
-            '.' -> LINUX_KEY_DOT to KeyEvent.KEYCODE_PERIOD
-            else -> null
-        }
-        val withShift = char.isLetter() && char.isUpperCase()
+        val mapped = asciiKey(char)
 
-        if (pair != null) {
-            val (linuxKeyCode, androidKeyCode) = pair
-            pressHardwareKey(linuxKeyCode, androidKeyCode, withShift, withCtrl)
+        if (mapped != null) {
+            pressHardwareKey(mapped.linuxKeyCode, mapped.androidKeyCode, mapped.withShift, withCtrl)
         } else {
             Log.d(KEYBOARD_TAG, "virtual key pressed char=$char; output=fallback text injection")
             mouse.typeText(char.toString())
@@ -239,6 +240,9 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun sendRomajiKey(char: Char, withCtrl: Boolean = false) = typeAsciiChar(char, withCtrl)
+    fun sendRomajiSequence(text: String) {
+        text.forEach { typeAsciiChar(it) }
+    }
 
     // Input: dDist — span change in pixels this frame (positive = spreading = zoom in).
     // Accumulates until 200 px threshold to avoid jitter; each 200 px = 1 AXIS_VSCROLL detent,
@@ -299,12 +303,30 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         private const val KEYBOARD_TAG = "VirtualKeyboard"
 
         private const val LINUX_KEY_1 = 2
+        private const val LINUX_KEY_2 = 3
+        private const val LINUX_KEY_3 = 4
+        private const val LINUX_KEY_5 = 6
+        private const val LINUX_KEY_7 = 8
+        private const val LINUX_KEY_9 = 10
         private const val LINUX_KEY_0 = 11
+        private const val LINUX_KEY_MINUS = 12
+        private const val LINUX_KEY_EQUAL = 13
         private const val LINUX_KEY_BACKSPACE = 14
+        private const val LINUX_KEY_TAB = 15
         private const val LINUX_KEY_ENTER = 28
+        private const val LINUX_KEY_SEMICOLON = 39
+        private const val LINUX_KEY_APOSTROPHE = 40
+        private const val LINUX_KEY_BACKSLASH = 43
         private const val LINUX_KEY_COMMA = 51
         private const val LINUX_KEY_DOT = 52
+        private const val LINUX_KEY_SLASH = 53
         private const val LINUX_KEY_SPACE = 57
+        private const val LINUX_KEY_ESC = 1
+        private const val LINUX_KEY_UP = 103
+        private const val LINUX_KEY_LEFT = 105
+        private const val LINUX_KEY_RIGHT = 106
+        private const val LINUX_KEY_DOWN = 108
+        private const val LINUX_KEY_DELETE = 111
 
         private fun linuxDigitKeyCode(char: Char): Int =
             if (char == '0') LINUX_KEY_0 else LINUX_KEY_1 + (char - '1')
@@ -319,17 +341,19 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun pressHardwareKey(
         linuxKeyCode: Int,
-        androidKeyCode: Int,
+        androidKeyCode: Int?,
         withShift: Boolean = false,
         withCtrl: Boolean = false,
     ) {
-        Log.d(KEYBOARD_TAG, "QWERTY key pressed linuxKey=$linuxKeyCode shift=$withShift ctrl=$withCtrl")
+        Log.d(KEYBOARD_TAG, "virtual key pressed linuxKey=$linuxKeyCode shift=$withShift ctrl=$withCtrl")
         val sent = mouse.pressHardwareKey(linuxKeyCode, withShift, withCtrl)
         if (sent) {
             Log.d(KEYBOARD_TAG, "key sent through uinput keyboard linuxKey=$linuxKeyCode shift=$withShift ctrl=$withCtrl")
         } else {
             Log.d(KEYBOARD_TAG, "fallback injection used linuxKey=$linuxKeyCode androidKey=$androidKeyCode")
-            if (withCtrl) mouse.pressKeyWithCtrl(androidKeyCode) else mouse.pressKey(androidKeyCode)
+            if (androidKeyCode != null) {
+                if (withCtrl) mouse.pressKeyWithCtrl(androidKeyCode) else mouse.pressKey(androidKeyCode)
+            }
         }
     }
 
@@ -341,6 +365,49 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         KeyEvent.KEYCODE_DEL -> LINUX_KEY_BACKSPACE
         KeyEvent.KEYCODE_COMMA -> LINUX_KEY_COMMA
         KeyEvent.KEYCODE_PERIOD -> LINUX_KEY_DOT
+        KeyEvent.KEYCODE_TAB -> LINUX_KEY_TAB
+        KeyEvent.KEYCODE_ESCAPE -> LINUX_KEY_ESC
+        KeyEvent.KEYCODE_FORWARD_DEL -> LINUX_KEY_DELETE
+        KeyEvent.KEYCODE_DPAD_UP -> LINUX_KEY_UP
+        KeyEvent.KEYCODE_DPAD_DOWN -> LINUX_KEY_DOWN
+        KeyEvent.KEYCODE_DPAD_LEFT -> LINUX_KEY_LEFT
+        KeyEvent.KEYCODE_DPAD_RIGHT -> LINUX_KEY_RIGHT
         else -> null
+    }
+
+    private data class AsciiKey(val linuxKeyCode: Int, val androidKeyCode: Int?, val withShift: Boolean = false)
+
+    private fun asciiKey(char: Char): AsciiKey? {
+        val lower = char.lowercaseChar()
+        return when {
+            lower in 'a'..'z' -> AsciiKey(
+                linuxLetterKeyCode(lower),
+                KeyEvent.KEYCODE_A + (lower - 'a'),
+                char.isUpperCase(),
+            )
+            char in '0'..'9' -> AsciiKey(linuxDigitKeyCode(char), KeyEvent.KEYCODE_0 + (char - '0'))
+            char == ' ' -> AsciiKey(LINUX_KEY_SPACE, KeyEvent.KEYCODE_SPACE)
+            char == '\n' -> AsciiKey(LINUX_KEY_ENTER, KeyEvent.KEYCODE_ENTER)
+            char == ',' -> AsciiKey(LINUX_KEY_COMMA, KeyEvent.KEYCODE_COMMA)
+            char == '.' -> AsciiKey(LINUX_KEY_DOT, KeyEvent.KEYCODE_PERIOD)
+            char == '-' -> AsciiKey(LINUX_KEY_MINUS, KeyEvent.KEYCODE_MINUS)
+            char == '/' -> AsciiKey(LINUX_KEY_SLASH, KeyEvent.KEYCODE_SLASH)
+            char == ';' -> AsciiKey(LINUX_KEY_SEMICOLON, KeyEvent.KEYCODE_SEMICOLON)
+            char == '\'' -> AsciiKey(LINUX_KEY_APOSTROPHE, KeyEvent.KEYCODE_APOSTROPHE)
+            char == '=' -> AsciiKey(LINUX_KEY_EQUAL, KeyEvent.KEYCODE_EQUALS)
+            char == '\\' || char == '¥' -> AsciiKey(LINUX_KEY_BACKSLASH, KeyEvent.KEYCODE_BACKSLASH)
+            char == ':' -> AsciiKey(LINUX_KEY_SEMICOLON, KeyEvent.KEYCODE_SEMICOLON, withShift = true)
+            char == '(' -> AsciiKey(LINUX_KEY_9, KeyEvent.KEYCODE_9, withShift = true)
+            char == ')' -> AsciiKey(LINUX_KEY_0, KeyEvent.KEYCODE_0, withShift = true)
+            char == '&' -> AsciiKey(LINUX_KEY_7, KeyEvent.KEYCODE_7, withShift = true)
+            char == '@' -> AsciiKey(LINUX_KEY_2, KeyEvent.KEYCODE_2, withShift = true)
+            char == '"' -> AsciiKey(LINUX_KEY_APOSTROPHE, KeyEvent.KEYCODE_APOSTROPHE, withShift = true)
+            char == '?' -> AsciiKey(LINUX_KEY_SLASH, KeyEvent.KEYCODE_SLASH, withShift = true)
+            char == '!' -> AsciiKey(LINUX_KEY_1, KeyEvent.KEYCODE_1, withShift = true)
+            char == '#' -> AsciiKey(LINUX_KEY_3, KeyEvent.KEYCODE_3, withShift = true)
+            char == '%' -> AsciiKey(LINUX_KEY_5, KeyEvent.KEYCODE_5, withShift = true)
+            char == '+' -> AsciiKey(LINUX_KEY_EQUAL, KeyEvent.KEYCODE_EQUALS, withShift = true)
+            else -> null
+        }
     }
 }

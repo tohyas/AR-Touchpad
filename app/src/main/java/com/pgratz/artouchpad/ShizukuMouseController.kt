@@ -37,7 +37,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(18)  // bumped — Ctrl-modified uinput keyboard presses for QWERTY mode
+        .version(19)  // bumped — symbol/editing uinput keyboard capabilities
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {

@@ -35,13 +35,13 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TouchpadViewModel by viewModels()
-    private var qwertyWindowNonFocusable = false
+    private var keyboardWindowNonFocusable = false
 
     // Sets up edge-to-edge display and mounts the full-screen TouchpadScreen composable.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        observeQwertyFocusMode()
+        observeKeyboardFocusMode()
         setContent {
             ARTouchpadTheme {
                 TouchpadScreen(viewModel = viewModel)
@@ -56,26 +56,26 @@ class MainActivity : ComponentActivity() {
         viewModel.refresh()
     }
 
-    private fun observeQwertyFocusMode() {
+    private fun observeKeyboardFocusMode() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.state
-                    .map { it.showKeyboard && it.keyboardMode == VirtualKeyboardMode.QWERTY }
+                    .map { it.showKeyboard }
                     .distinctUntilChanged()
-                    .collectLatest(::setQwertyWindowNonFocusable)
+                    .collectLatest(::setKeyboardWindowNonFocusable)
             }
         }
     }
 
-    private fun setQwertyWindowNonFocusable(enabled: Boolean) {
-        if (qwertyWindowNonFocusable == enabled) return
-        qwertyWindowNonFocusable = enabled
+    private fun setKeyboardWindowNonFocusable(enabled: Boolean) {
+        if (keyboardWindowNonFocusable == enabled) return
+        keyboardWindowNonFocusable = enabled
         if (enabled) {
             window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         }
-        Log.d(TAG, "QWERTY non-focusable window flag applied=$enabled")
+        Log.d(TAG, "Virtual keyboard non-focusable window flag applied=$enabled")
     }
 
     companion object {
