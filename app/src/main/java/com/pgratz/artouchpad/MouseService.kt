@@ -40,6 +40,9 @@ class MouseService : IMouseService.Stub() {
     private var cursorY = 540f
 
     private var uinputReady = false
+    private var keyboardUinputReady = false
+    private var keyboardShiftDown = false
+    private var keyboardCtrlDown = false
 
     // Sub-pixel accumulators: carry fractional remainders between calls so that
     // slow movements (e.g. 0.4 px/frame) accumulate cleanly instead of truncating
@@ -73,6 +76,7 @@ class MouseService : IMouseService.Stub() {
 
     init {
         initUinput()
+        initKeyboardUinput()
     }
 
     // Opens /dev/uinput via JNI, declares mouse capabilities (REL_X/Y, wheel, buttons),
@@ -119,6 +123,118 @@ class MouseService : IMouseService.Stub() {
     private fun ev(type: Int, code: Int, value: Int) = UinputNative.nWriteEvent(type, code, value)
     // Flushes all buffered events to the input dispatcher with an EV_SYN/SYN_REPORT marker.
     private fun sync() = ev(EV_SYN, SYN_REPORT, 0)
+    private fun keyEv(type: Int, code: Int, value: Int) = UinputNative.nKeyboardWriteEvent(type, code, value)
+    private fun keySync() = keyEv(EV_SYN, SYN_REPORT, 0)
+
+    private fun initKeyboardUinput() {
+        try {
+            val fd = UinputNative.nKeyboardOpen()
+            if (fd < 0) {
+                Log.e(TAG, "uinput keyboard failed: nKeyboardOpen returned $fd")
+                return
+            }
+
+            fun ioctl(req: Int, value: Int) {
+                val r = UinputNative.nKeyboardIoctl(req, value)
+                if (r < 0) Log.w(TAG, "keyboard ioctl(0x${req.toString(16)}, $value) returned $r")
+            }
+
+            ioctl(UI_SET_EVBIT, EV_SYN)
+            ioctl(UI_SET_EVBIT, EV_KEY)
+            ioctl(UI_SET_EVBIT, EV_REP)
+
+            listOf(
+                KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G, KEY_H, KEY_I, KEY_J, KEY_K, KEY_L, KEY_M,
+                KEY_N, KEY_O, KEY_P, KEY_Q, KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z,
+            ).forEach { ioctl(UI_SET_KEYBIT, it) }
+            for (code in KEY_1..KEY_0) ioctl(UI_SET_KEYBIT, code)
+            listOf(
+                KEY_SPACE,
+                KEY_ENTER,
+                KEY_BACKSPACE,
+                KEY_DELETE,
+                KEY_COMMA,
+                KEY_DOT,
+                KEY_MINUS,
+                KEY_EQUAL,
+                KEY_SEMICOLON,
+                KEY_APOSTROPHE,
+                KEY_BACKSLASH,
+                KEY_SLASH,
+                KEY_LEFTSHIFT,
+                KEY_LEFTCTRL,
+                KEY_TAB,
+                KEY_ESC,
+                KEY_UP,
+                KEY_LEFT,
+                KEY_RIGHT,
+                KEY_DOWN,
+            ).forEach { ioctl(UI_SET_KEYBIT, it) }
+
+            val n = UinputNative.nKeyboardWriteDevInfo("AR Touchpad Keyboard")
+            if (n < 0) {
+                Log.e(TAG, "uinput keyboard failed: nKeyboardWriteDevInfo returned $n")
+                return
+            }
+
+            ioctl(UI_DEV_CREATE, 0)
+            Thread.sleep(400)
+            keyboardUinputReady = true
+            Log.i(TAG, "uinput keyboard initialized")
+        } catch (e: Exception) {
+            Log.e(TAG, "uinput keyboard failed: $e")
+        }
+    }
+
+    private fun ensureKeyboardDeviceReady(): Boolean {
+        if (keyboardUinputReady) return true
+        initKeyboardUinput()
+        return keyboardUinputReady
+    }
+
+    override fun setKeyboardShiftDown(down: Boolean) {
+        if (keyboardShiftDown == down) return
+        if (!ensureKeyboardDeviceReady()) {
+            Log.w(TAG, "uinput keyboard shift hold failed: keyboard unavailable down=$down")
+            if (!down) keyboardShiftDown = false
+            return
+        }
+        try {
+            keyEv(EV_KEY, KEY_LEFTSHIFT, if (down) 1 else 0)
+            keySync()
+            keyboardShiftDown = down
+            Log.d(TAG, "uinput keyboard shiftDown=$down")
+        } catch (e: Exception) {
+            Log.e(TAG, "uinput keyboard shift hold failed down=$down: $e")
+            if (down) runCatching {
+                keyEv(EV_KEY, KEY_LEFTSHIFT, 0)
+                keySync()
+            }
+            keyboardShiftDown = false
+        }
+    }
+
+    override fun setKeyboardCtrlDown(down: Boolean) {
+        if (keyboardCtrlDown == down) return
+        if (!ensureKeyboardDeviceReady()) {
+            Log.w(TAG, "uinput keyboard ctrl hold failed: keyboard unavailable down=$down")
+            if (!down) keyboardCtrlDown = false
+            return
+        }
+        try {
+            keyEv(EV_KEY, KEY_LEFTCTRL, if (down) 1 else 0)
+            keySync()
+            keyboardCtrlDown = down
+            Log.d(TAG, "uinput keyboard ctrlDown=$down")
+        } catch (e: Exception) {
+            Log.e(TAG, "uinput keyboard ctrl hold failed down=$down: $e")
+            if (down) runCatching {
+                keyEv(EV_KEY, KEY_LEFTCTRL, 0)
+                keySync()
+            }
+            keyboardCtrlDown = false
+        }
+    }
 
     // Stores the target display id and pixel dimensions; resets cursor to center and clears
     // accumulators. Sends a 1-px nudge to wake the OS cursor on the new display.
@@ -209,6 +325,58 @@ class MouseService : IMouseService.Stub() {
             }
         }
         Log.d(TAG, "typeText \"$text\" displayId=$displayId")
+    }
+
+    override fun pressHardwareKey(linuxKeyCode: Int, withShift: Boolean, withCtrl: Boolean): Boolean {
+        if (!ensureKeyboardDeviceReady()) {
+            Log.w(TAG, "fallback injection used: uinput keyboard unavailable key=$linuxKeyCode")
+            return false
+        }
+
+        return try {
+            fun writeKey(type: Int, code: Int, value: Int): Boolean =
+                keyEv(type, code, value) >= 0
+
+            var ok = true
+            var ctrlPressed = false
+            var shiftPressed = false
+            if (withCtrl && !keyboardCtrlDown) {
+                ok = writeKey(EV_KEY, KEY_LEFTCTRL, 1)
+                ctrlPressed = ok
+                keySync()
+            }
+            if (withShift && !keyboardShiftDown && ok) {
+                ok = writeKey(EV_KEY, KEY_LEFTSHIFT, 1)
+                shiftPressed = ok
+                keySync()
+            }
+            if (ctrlPressed || shiftPressed) Thread.sleep(25)
+            if (ok) ok = writeKey(EV_KEY, linuxKeyCode, 1)
+            keySync()
+            Thread.sleep(20)
+            if (ok) ok = writeKey(EV_KEY, linuxKeyCode, 0)
+            keySync()
+            if (ctrlPressed || shiftPressed) Thread.sleep(25)
+            if (shiftPressed) {
+                ok = writeKey(EV_KEY, KEY_LEFTSHIFT, 0) && ok
+                keySync()
+            }
+            if (ctrlPressed) {
+                ok = writeKey(EV_KEY, KEY_LEFTCTRL, 0) && ok
+                keySync()
+            }
+            if (ok) {
+                Log.d(TAG, "key sent through uinput keyboard key=$linuxKeyCode shift=$withShift ctrl=$withCtrl")
+            } else {
+                Log.w(TAG, "fallback injection used: uinput keyboard write failed key=$linuxKeyCode")
+            }
+            ok
+        } catch (e: Exception) {
+            if (withShift && !keyboardShiftDown) runCatching { keyEv(EV_KEY, KEY_LEFTSHIFT, 0); keySync() }
+            if (withCtrl && !keyboardCtrlDown) runCatching { keyEv(EV_KEY, KEY_LEFTCTRL, 0); keySync() }
+            Log.e(TAG, "uinput keyboard key failed key=$linuxKeyCode shift=$withShift ctrl=$withCtrl: $e")
+            false
+        }
     }
 
     // For each KeyEvent in the array, constructs a new event carrying the same action/keycode/
@@ -356,8 +524,26 @@ class MouseService : IMouseService.Stub() {
             leftButtonDown = false
             Log.d(TAG, "mouseUp during destroy displayId=$displayId")
         }
+        if (keyboardShiftDown) {
+            runCatching {
+                keyEv(EV_KEY, KEY_LEFTSHIFT, 0)
+                keySync()
+            }
+            keyboardShiftDown = false
+            Log.d(TAG, "keyboard shift released during destroy")
+        }
+        if (keyboardCtrlDown) {
+            runCatching {
+                keyEv(EV_KEY, KEY_LEFTCTRL, 0)
+                keySync()
+            }
+            keyboardCtrlDown = false
+            Log.d(TAG, "keyboard ctrl released during destroy")
+        }
         UinputNative.nClose()
+        UinputNative.nKeyboardClose()
         uinputReady = false
+        keyboardUinputReady = false
     }
 
     companion object {
@@ -369,10 +555,26 @@ class MouseService : IMouseService.Stub() {
         const val UI_DEV_CREATE  = 0x5501
         const val UI_DEV_DESTROY = 0x5502
 
-        const val EV_SYN = 0; const val EV_KEY = 1; const val EV_REL = 2
+        const val EV_SYN = 0; const val EV_KEY = 1; const val EV_REL = 2; const val EV_REP = 20
         const val REL_X = 0; const val REL_Y = 1; const val REL_HWHEEL = 6; const val REL_WHEEL = 8
         const val BTN_LEFT = 0x110; const val BTN_RIGHT = 0x111; const val BTN_MIDDLE = 0x112
         const val KEY_BACK = 158; const val KEY_HOME = 102; const val KEY_APPSWITCH = 580
+        const val KEY_ESC = 1
+        const val KEY_1 = 2; const val KEY_2 = 3; const val KEY_3 = 4; const val KEY_4 = 5; const val KEY_5 = 6
+        const val KEY_6 = 7; const val KEY_7 = 8; const val KEY_8 = 9; const val KEY_9 = 10; const val KEY_0 = 11
+        const val KEY_MINUS = 12; const val KEY_EQUAL = 13; const val KEY_BACKSPACE = 14; const val KEY_TAB = 15
+        const val KEY_Q = 16; const val KEY_W = 17; const val KEY_E = 18; const val KEY_R = 19; const val KEY_T = 20
+        const val KEY_Y = 21; const val KEY_U = 22; const val KEY_I = 23; const val KEY_O = 24; const val KEY_P = 25
+        const val KEY_ENTER = 28; const val KEY_LEFTCTRL = 29
+        const val KEY_A = 30; const val KEY_S = 31; const val KEY_D = 32; const val KEY_F = 33; const val KEY_G = 34
+        const val KEY_H = 35; const val KEY_J = 36; const val KEY_K = 37; const val KEY_L = 38
+        const val KEY_SEMICOLON = 39; const val KEY_APOSTROPHE = 40; const val KEY_LEFTSHIFT = 42
+        const val KEY_BACKSLASH = 43
+        const val KEY_Z = 44; const val KEY_X = 45; const val KEY_C = 46; const val KEY_V = 47; const val KEY_B = 48
+        const val KEY_N = 49; const val KEY_M = 50; const val KEY_COMMA = 51; const val KEY_DOT = 52
+        const val KEY_SLASH = 53; const val KEY_SPACE = 57
+        const val KEY_UP = 103; const val KEY_LEFT = 105; const val KEY_RIGHT = 106; const val KEY_DOWN = 108
+        const val KEY_DELETE = 111
         const val SYN_REPORT = 0
     }
 }

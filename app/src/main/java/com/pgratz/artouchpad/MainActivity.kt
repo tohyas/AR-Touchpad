@@ -15,22 +15,33 @@
 package com.pgratz.artouchpad
 
 import android.os.Bundle
+import android.util.Log
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.pgratz.artouchpad.ui.TouchpadScreen
 import com.pgratz.artouchpad.ui.theme.ARTouchpadTheme
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 // Single-activity entry point. Hosts the Compose UI and owns the ViewModel lifecycle.
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TouchpadViewModel by viewModels()
+    private var keyboardWindowNonFocusable = false
 
     // Sets up edge-to-edge display and mounts the full-screen TouchpadScreen composable.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        observeKeyboardFocusMode()
         setContent {
             ARTouchpadTheme {
                 TouchpadScreen(viewModel = viewModel)
@@ -43,5 +54,31 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refresh()
+    }
+
+    private fun observeKeyboardFocusMode() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.state
+                    .map { it.showKeyboard }
+                    .distinctUntilChanged()
+                    .collectLatest(::setKeyboardWindowNonFocusable)
+            }
+        }
+    }
+
+    private fun setKeyboardWindowNonFocusable(enabled: Boolean) {
+        if (keyboardWindowNonFocusable == enabled) return
+        keyboardWindowNonFocusable = enabled
+        if (enabled) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        }
+        Log.d(TAG, "Virtual keyboard non-focusable window flag applied=$enabled")
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }

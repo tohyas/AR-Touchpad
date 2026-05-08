@@ -37,7 +37,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(16)  // bumped — ctrlScroll for content-level pinch zoom (Ctrl+scroll MotionEvent)
+        .version(21)  // bumped — stateful uinput keyboard Ctrl hold
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -166,4 +166,18 @@ class ShizukuMouseController {
 
     // Injects a Ctrl+scroll MotionEvent for content-level zoom in Chrome/WebView apps.
     fun ctrlScroll(amount: Float) { runCatching { service?.ctrlScroll(amount) } }
+
+    // Sends one Linux key through the AR Touchpad uinput keyboard device.
+    fun pressHardwareKey(linuxKeyCode: Int, withShift: Boolean = false, withCtrl: Boolean = false): Boolean =
+        runCatching { service?.pressHardwareKey(linuxKeyCode, withShift, withCtrl) == true }.getOrDefault(false)
+
+    // Holds or releases KEY_LEFTSHIFT on the AR Touchpad uinput keyboard device.
+    fun setKeyboardShiftDown(down: Boolean) {
+        runCatching { service?.setKeyboardShiftDown(down) }
+    }
+
+    // Holds or releases KEY_LEFTCTRL on the AR Touchpad uinput keyboard device.
+    fun setKeyboardCtrlDown(down: Boolean) {
+        runCatching { service?.setKeyboardCtrlDown(down) }
+    }
 }

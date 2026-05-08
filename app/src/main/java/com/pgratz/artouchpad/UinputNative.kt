@@ -62,4 +62,10 @@ object UinputNative {
     @JvmStatic external fun nWriteEvent(type: Int, code: Int, value: Int): Int
     // Sends UI_DEV_DESTROY and closes the uinput fd.
     @JvmStatic external fun nClose()
+
+    @JvmStatic external fun nKeyboardOpen(): Int
+    @JvmStatic external fun nKeyboardIoctl(request: Int, value: Int): Int
+    @JvmStatic external fun nKeyboardWriteDevInfo(name: String): Int
+    @JvmStatic external fun nKeyboardWriteEvent(type: Int, code: Int, value: Int): Int
+    @JvmStatic external fun nKeyboardClose()
 }
