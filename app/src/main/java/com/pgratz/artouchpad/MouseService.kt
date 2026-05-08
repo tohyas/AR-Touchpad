@@ -48,6 +48,7 @@ class MouseService : IMouseService.Stub() {
     private var accumY = 0f
     private var accumScroll = 0f
     private var accumHScroll = 0f
+    private var leftButtonDown = false
 
     // Reflection handles for display-targeted key injection.
     // injectInputEvent(event, mode) on InputManagerGlobal respects the displayId
@@ -324,20 +325,37 @@ class MouseService : IMouseService.Stub() {
     // Used for text selection: button held while moveMouse moves the cursor.
     override fun mouseDown() {
         if (!uinputReady) return
+        if (leftButtonDown) {
+            Log.d(TAG, "mouseDown ignored; BTN_LEFT already down displayId=$displayId")
+            return
+        }
         ev(EV_KEY, BTN_LEFT, 1); sync()
+        leftButtonDown = true
         Log.d(TAG, "mouseDown displayId=$displayId")
     }
 
     // Releases BTN_LEFT previously pressed by mouseDown().
     override fun mouseUp() {
-        if (!uinputReady) return
+        if (!uinputReady) {
+            leftButtonDown = false
+            return
+        }
+        if (!leftButtonDown) {
+            Log.d(TAG, "mouseUp defensive release; BTN_LEFT was not marked down displayId=$displayId")
+        }
         ev(EV_KEY, BTN_LEFT, 0); sync()
+        leftButtonDown = false
         Log.d(TAG, "mouseUp displayId=$displayId")
     }
 
     // Closes the uinput file descriptor via JNI (sends UI_DEV_DESTROY internally) and marks
     // the device unavailable so subsequent calls are no-ops rather than crashing.
     override fun destroy() {
+        if (uinputReady) {
+            ev(EV_KEY, BTN_LEFT, 0); sync()
+            leftButtonDown = false
+            Log.d(TAG, "mouseUp during destroy displayId=$displayId")
+        }
         UinputNative.nClose()
         uinputReady = false
     }

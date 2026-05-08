@@ -16,6 +16,7 @@ package com.pgratz.artouchpad.ui
 
 import android.content.Intent
 import android.provider.Settings
+import android.util.Log
 import android.view.KeyEvent as AKeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -44,10 +45,6 @@ import com.pgratz.artouchpad.TouchMode
 import com.pgratz.artouchpad.TouchpadViewModel
 import kotlin.math.abs
 import kotlin.math.sqrt
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 
 private val BG = Color(0xFF0D1117)
@@ -63,6 +60,8 @@ private val NAV_ICON = Color(0xFFB0BEC5)
 private const val MOVE_THRESHOLD = 5f
 private const val TAP_MAX_MS = 220L
 private const val DOUBLE_TAP_WINDOW_MS = 300L
+private const val TAP_DRAG_HOLD_MS = 140L
+private const val GESTURE_TAG = "TouchpadGesture"
 
 // Root composable. Collects ViewModel state and renders either SettingsPanel (when
 // showSettings is true) or the main layout: StatusBar → TouchpadSurface → optional
@@ -253,21 +252,28 @@ private fun TouchpadSurface(
                     if (!enabled) return@pointerInput
 
                     var lastPositions = mapOf<PointerId, Offset>()
+                    var startPosition = Offset.Zero
                     var downTime = 0L
                     var didMove = false
-                    var lastTapTime = 0L
-                    var isSecondTap = false
+                    var lastCleanTapUpTime = 0L
+                    var tapDragCandidate = false
                     var isDragMode = false
                     var maxPointers = 0
                     var twoFingerDidMove = false
                     var twoFingerAccumX = 0f
                     var twoFingerAccumY = 0f
                     var twoFingerAccumSpan = 0f
-                    var pendingClickJob: Job? = null
+                    var activeTouch = false
 
-                    coroutineScope {
-                        val scope = this
+                    fun releaseDrag(reason: String) {
+                        if (isDragMode) {
+                            Log.d(GESTURE_TAG, "mouse up / select end: $reason")
+                            onSelectEnd()
+                            isDragMode = false
+                        }
+                    }
 
+                    try {
                         awaitPointerEventScope {
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -284,19 +290,26 @@ private fun TouchpadSurface(
                                 if (justPressed.isNotEmpty() && pressed.size == 1) {
                                     downTime = now
                                     didMove = false
+                                    activeTouch = true
                                     maxPointers = 1
                                     twoFingerDidMove = false
                                     twoFingerAccumX = 0f
                                     twoFingerAccumY = 0f
                                     twoFingerAccumSpan = 0f
                                     isDragMode = false
-                                    isSecondTap = now - lastTapTime < DOUBLE_TAP_WINDOW_MS
-                                    if (isSecondTap) pendingClickJob?.cancel()
+                                    startPosition = pressed.first().position
+                                    tapDragCandidate = now - lastCleanTapUpTime <= DOUBLE_TAP_WINDOW_MS
+                                    Log.d(
+                                        GESTURE_TAG,
+                                        "one-finger down: local tracking only, tapDragCandidate=$tapDragCandidate",
+                                    )
                                     lastPositions = pressed.associate { it.id to it.position }
                                 } else if (justPressed.isNotEmpty() && pressed.size == 2) {
+                                    releaseDrag("pointer-count changed to two fingers")
                                     if (lastPositions.isEmpty()) downTime = now
-                                    pendingClickJob?.cancel()
-                                    isSecondTap = false
+                                    activeTouch = true
+                                    tapDragCandidate = false
+                                    lastCleanTapUpTime = 0L
                                     twoFingerDidMove = false
                                     twoFingerAccumX = 0f
                                     twoFingerAccumY = 0f
@@ -311,20 +324,38 @@ private fun TouchpadSurface(
                                         if (last != null) {
                                             val dx = p.position.x - last.x
                                             val dy = p.position.y - last.y
-                                            val moved = abs(dx) > MOVE_THRESHOLD || abs(dy) > MOVE_THRESHOLD
+                                            val totalDx = p.position.x - startPosition.x
+                                            val totalDy = p.position.y - startPosition.y
+                                            val totalMove = sqrt(totalDx * totalDx + totalDy * totalDy)
+                                            val moved = totalMove > MOVE_THRESHOLD
 
                                             // Ignore movement from a remaining finger after a two-finger gesture.
                                             if (maxPointers == 1 && !didMove && moved) {
                                                 didMove = true
-                                                if (isSecondTap) {
+                                                val heldForTapDrag = now - downTime >= TAP_DRAG_HOLD_MS
+                                                if (tapDragCandidate && heldForTapDrag) {
                                                     isDragMode = true
-                                                    pendingClickJob?.cancel()
-                                                    lastTapTime = 0L
+                                                    lastCleanTapUpTime = 0L
+                                                    Log.d(
+                                                        GESTURE_TAG,
+                                                        "mouse down / select start: double-tap-hold drag recognized before first drag move",
+                                                    )
                                                     onSelectStart()
+                                                } else {
+                                                    tapDragCandidate = false
+                                                    lastCleanTapUpTime = 0L
+                                                    Log.d(
+                                                        GESTURE_TAG,
+                                                        "cursor move: one-finger drag recognized totalMove=$totalMove heldMs=${now - downTime}",
+                                                    )
                                                 }
                                             }
 
                                             if (maxPointers == 1 && (isDragMode || didMove)) {
+                                                Log.d(
+                                                    GESTURE_TAG,
+                                                    "cursor move: branch=${if (isDragMode) "tap-drag" else "one-finger drag"} dx=$dx dy=$dy",
+                                                )
                                                 onMoveCursor(dx, dy)
                                                 if (isDragMode) {
                                                     onTouchModeChanged(TouchMode.SELECT)
@@ -337,10 +368,7 @@ private fun TouchpadSurface(
                                         p.consume()
                                     }
                                     2 -> {
-                                        if (isDragMode) {
-                                            onSelectEnd()
-                                            isDragMode = false
-                                        }
+                                        releaseDrag("two-finger gesture took over")
 
                                         val newPositions = pressed.associate { it.id to it.position }
                                         if (lastPositions.size == 2) {
@@ -375,6 +403,7 @@ private fun TouchpadSurface(
                                                             onPinch(dSpan)
                                                         }
                                                     } else if (dx != 0f || dy != 0f) {
+                                                        Log.d(GESTURE_TAG, "scroll: two-finger drag dx=$dx dy=$dy")
                                                         onScroll(dx, dy)
                                                         onTouchModeChanged(TouchMode.SCROLL)
                                                     }
@@ -391,26 +420,32 @@ private fun TouchpadSurface(
                                     onTouchModeChanged(TouchMode.IDLE)
 
                                     when {
-                                        isDragMode -> onSelectEnd()
-                                        maxPointers == 2 && !twoFingerDidMove && duration < TAP_MAX_MS -> onRightClick()
+                                        isDragMode -> releaseDrag("finger released after tap-drag")
+                                        maxPointers == 2 && !twoFingerDidMove && duration < TAP_MAX_MS -> {
+                                            Log.d(GESTURE_TAG, "right click: clean two-finger tap durationMs=$duration")
+                                            onRightClick()
+                                            lastCleanTapUpTime = 0L
+                                        }
                                         maxPointers == 1 && !didMove && duration < TAP_MAX_MS -> {
-                                            if (isSecondTap) {
-                                                pendingClickJob?.cancel()
-                                                onDoubleClick()
-                                                lastTapTime = 0L
+                                            if (tapDragCandidate) {
+                                                Log.d(GESTURE_TAG, "double click: clean second tap sends second left click")
+                                                onClick()
+                                                lastCleanTapUpTime = 0L
                                             } else {
-                                                lastTapTime = now
-                                                pendingClickJob = scope.launch {
-                                                    delay(DOUBLE_TAP_WINDOW_MS)
-                                                    if (lastTapTime == now) {
-                                                        onClick()
-                                                        lastTapTime = 0L
-                                                    }
-                                                }
+                                                Log.d(GESTURE_TAG, "click: clean one-finger tap durationMs=$duration")
+                                                onClick()
+                                                lastCleanTapUpTime = now
                                             }
                                         }
+                                        else -> {
+                                            if (maxPointers == 1 && !didMove) {
+                                                Log.d(GESTURE_TAG, "one-finger hold released without click durationMs=$duration")
+                                            }
+                                            lastCleanTapUpTime = 0L
+                                        }
                                     }
-                                    isSecondTap = false
+                                    activeTouch = false
+                                    tapDragCandidate = false
                                     isDragMode = false
                                     maxPointers = 0
                                     twoFingerDidMove = false
@@ -421,6 +456,11 @@ private fun TouchpadSurface(
                                     touchPoints = emptyList()
                                 }
                             }
+                        }
+                    } finally {
+                        if (activeTouch) {
+                            releaseDrag("pointer input cancelled")
+                            onTouchModeChanged(TouchMode.IDLE)
                         }
                     }
                 },
