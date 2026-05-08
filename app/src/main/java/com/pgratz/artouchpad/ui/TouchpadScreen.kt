@@ -69,8 +69,8 @@ private const val MOVE_THRESHOLD = 5f
 private const val TAP_MAX_MS = 220L
 private const val DOUBLE_TAP_WINDOW_MS = 300L
 private const val TAP_DRAG_HOLD_MS = 140L
-private const val EDITING_ARROW_INITIAL_REPEAT_DELAY_MS = 300L
-private const val EDITING_ARROW_REPEAT_INTERVAL_MS = 65L
+private const val EDITING_ARROW_INITIAL_REPEAT_DELAY_MS = 200L
+private const val EDITING_ARROW_REPEAT_INTERVAL_MS = 40L
 private const val GESTURE_TAG = "TouchpadGesture"
 
 // Root composable. Collects ViewModel state and renders either SettingsPanel (when
