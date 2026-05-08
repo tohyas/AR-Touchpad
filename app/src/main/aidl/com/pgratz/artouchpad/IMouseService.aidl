@@ -57,6 +57,10 @@ interface IMouseService {
     // amount: AXIS_VSCROLL value (positive = zoom in, negative = zoom out).
     void ctrlScroll(float amount) = 11;
 
+    // Sends a Linux EV_KEY press+release through the AR Touchpad uinput keyboard device.
+    // Returns false if the keyboard device could not be created or the write failed.
+    boolean pressHardwareKey(int linuxKeyCode, boolean withShift) = 12;
+
     // Closes the uinput file descriptor and marks the device not ready.
     void destroy() = 16777114;
 }

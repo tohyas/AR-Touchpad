@@ -88,13 +88,6 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         TouchpadAccessibilityService.onExternalTextFocus = {
             if (!_state.value.showKeyboard) {
                 _state.update { it.copy(showKeyboard = true) }
-                // Dismiss the glasses-side IME that Android auto-showed.
-                // BACK is consumed by the IME (dismisses it) and never reaches the app,
-                // so Chrome's text field stays focused and ready for our injected text.
-                viewModelScope.launch {
-                    delay(400)
-                    mouse.pressKey(android.view.KeyEvent.KEYCODE_BACK)
-                }
             }
         }
     }
@@ -206,32 +199,39 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     // Converts text to key events and injects them to the focused window on the glasses display.
     fun typeText(text: String) = mouse.typeText(text)
 
-    // Sends one virtual keyboard key through the service-level input path. For this first
-    // version, Android key injection is the robust fallback because it targets displayId.
+    // Sends one virtual keyboard key through the service-level hardware keyboard path.
+    // Falls back to display-targeted injection only if uinput keyboard output is unavailable.
     fun pressVirtualKey(key: VirtualKey) {
         when (key) {
             is VirtualKey.AndroidKeyCode -> {
-                Log.d(KEYBOARD_TAG, "virtual key pressed keyCode=${key.keyCode}; output=fallback injection")
-                mouse.pressKey(key.keyCode)
+                val linuxKeyCode = androidKeyCodeToLinux(key.keyCode)
+                if (linuxKeyCode != null) {
+                    pressHardwareKey(linuxKeyCode, key.keyCode)
+                } else {
+                    Log.d(KEYBOARD_TAG, "fallback injection used keyCode=${key.keyCode}; output=fallback injection")
+                    mouse.pressKey(key.keyCode)
+                }
             }
             is VirtualKey.AsciiChar -> typeAsciiChar(key.char)
         }
     }
 
     fun typeAsciiChar(char: Char) {
-        val keyCode = when (char.lowercaseChar()) {
-            in 'a'..'z' -> KeyEvent.KEYCODE_A + (char.lowercaseChar() - 'a')
-            in '0'..'9' -> KeyEvent.KEYCODE_0 + (char - '0')
-            ' ' -> KeyEvent.KEYCODE_SPACE
-            '\n' -> KeyEvent.KEYCODE_ENTER
-            ',' -> KeyEvent.KEYCODE_COMMA
-            '.' -> KeyEvent.KEYCODE_PERIOD
+        val lower = char.lowercaseChar()
+        val pair = when (lower) {
+            in 'a'..'z' -> linuxLetterKeyCode(lower) to (KeyEvent.KEYCODE_A + (lower - 'a'))
+            in '0'..'9' -> linuxDigitKeyCode(lower) to (KeyEvent.KEYCODE_0 + (lower - '0'))
+            ' ' -> LINUX_KEY_SPACE to KeyEvent.KEYCODE_SPACE
+            '\n' -> LINUX_KEY_ENTER to KeyEvent.KEYCODE_ENTER
+            ',' -> LINUX_KEY_COMMA to KeyEvent.KEYCODE_COMMA
+            '.' -> LINUX_KEY_DOT to KeyEvent.KEYCODE_PERIOD
             else -> null
         }
+        val withShift = char.isLetter() && char.isUpperCase()
 
-        if (keyCode != null && char == char.lowercaseChar()) {
-            Log.d(KEYBOARD_TAG, "virtual key pressed char=$char keyCode=$keyCode; output=fallback injection")
-            mouse.pressKey(keyCode)
+        if (pair != null) {
+            val (linuxKeyCode, androidKeyCode) = pair
+            pressHardwareKey(linuxKeyCode, androidKeyCode, withShift)
         } else {
             Log.d(KEYBOARD_TAG, "virtual key pressed char=$char; output=fallback text injection")
             mouse.typeText(char.toString())
@@ -297,5 +297,44 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val KEYBOARD_TAG = "VirtualKeyboard"
+
+        private const val LINUX_KEY_1 = 2
+        private const val LINUX_KEY_0 = 11
+        private const val LINUX_KEY_BACKSPACE = 14
+        private const val LINUX_KEY_ENTER = 28
+        private const val LINUX_KEY_COMMA = 51
+        private const val LINUX_KEY_DOT = 52
+        private const val LINUX_KEY_SPACE = 57
+
+        private fun linuxDigitKeyCode(char: Char): Int =
+            if (char == '0') LINUX_KEY_0 else LINUX_KEY_1 + (char - '1')
+
+        private fun linuxLetterKeyCode(char: Char): Int = when (char) {
+            'a' -> 30; 'b' -> 48; 'c' -> 46; 'd' -> 32; 'e' -> 18; 'f' -> 33; 'g' -> 34
+            'h' -> 35; 'i' -> 23; 'j' -> 36; 'k' -> 37; 'l' -> 38; 'm' -> 50; 'n' -> 49
+            'o' -> 24; 'p' -> 25; 'q' -> 16; 'r' -> 19; 's' -> 31; 't' -> 20; 'u' -> 22
+            'v' -> 47; 'w' -> 17; 'x' -> 45; 'y' -> 21; else -> 44
+        }
+    }
+
+    private fun pressHardwareKey(linuxKeyCode: Int, androidKeyCode: Int, withShift: Boolean = false) {
+        val sent = mouse.pressHardwareKey(linuxKeyCode, withShift)
+        if (sent) {
+            Log.d(KEYBOARD_TAG, "key sent through uinput keyboard linuxKey=$linuxKeyCode shift=$withShift")
+        } else {
+            Log.d(KEYBOARD_TAG, "fallback injection used linuxKey=$linuxKeyCode androidKey=$androidKeyCode")
+            mouse.pressKey(androidKeyCode)
+        }
+    }
+
+    private fun androidKeyCodeToLinux(androidKeyCode: Int): Int? = when (androidKeyCode) {
+        in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z -> linuxLetterKeyCode('a' + (androidKeyCode - KeyEvent.KEYCODE_A))
+        in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> linuxDigitKeyCode(('0' + (androidKeyCode - KeyEvent.KEYCODE_0)))
+        KeyEvent.KEYCODE_SPACE -> LINUX_KEY_SPACE
+        KeyEvent.KEYCODE_ENTER -> LINUX_KEY_ENTER
+        KeyEvent.KEYCODE_DEL -> LINUX_KEY_BACKSPACE
+        KeyEvent.KEYCODE_COMMA -> LINUX_KEY_COMMA
+        KeyEvent.KEYCODE_PERIOD -> LINUX_KEY_DOT
+        else -> null
     }
 }
