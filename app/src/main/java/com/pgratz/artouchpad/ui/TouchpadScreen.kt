@@ -127,6 +127,7 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                     onKey = viewModel::pressVirtualKey,
                     onChar = viewModel::sendRomajiKey,
                     onText = viewModel::sendRomajiSequence,
+                    onPaste = viewModel::pasteClipboardToExternal,
                     onDismiss = viewModel::toggleKeyboard,
                 )
             }
@@ -518,45 +519,47 @@ private fun VirtualKeyboardPanel(
     onKey: (VirtualKey) -> Unit,
     onChar: (Char, Boolean) -> Unit,
     onText: (String) -> Unit,
+    onPaste: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val modeSwitch: @Composable () -> Unit = {
-        ModeSwitchRow(mode = mode, onModeChange = onModeChange, onDismiss = onDismiss)
-    }
-
     when (mode) {
         VirtualKeyboardMode.QWERTY -> QwertyKeyboard(
-            modeSwitch = modeSwitch,
+            mode = mode,
+            onModeChange = onModeChange,
             onKey = onKey,
             onChar = onChar,
-            onDismiss = onDismiss,
+            onPaste = onPaste,
         )
         VirtualKeyboardMode.KANA -> KanaKeyboard(
-            modeSwitch = modeSwitch,
+            mode = mode,
             onModeChange = onModeChange,
             onText = onText,
             onKey = onKey,
+            onPaste = onPaste,
         )
         VirtualKeyboardMode.SYMBOLS -> SymbolKeyboard(
-            modeSwitch = modeSwitch,
+            mode = mode,
             onModeChange = onModeChange,
             onChar = onChar,
             onKey = onKey,
+            onPaste = onPaste,
         )
         VirtualKeyboardMode.EDITING -> EditingKeyboard(
-            modeSwitch = modeSwitch,
+            mode = mode,
             onModeChange = onModeChange,
             onKey = onKey,
+            onPaste = onPaste,
         )
     }
 }
 
 @Composable
 private fun QwertyKeyboard(
-    modeSwitch: @Composable () -> Unit,
+    mode: VirtualKeyboardMode,
+    onModeChange: (VirtualKeyboardMode) -> Unit,
     onKey: (VirtualKey) -> Unit,
     onChar: (Char, Boolean) -> Unit,
-    onDismiss: () -> Unit,
+    onPaste: () -> Unit,
 ) {
     var shift by remember { mutableStateOf(false) }
     // Logical latch only: each Ctrl shortcut physically presses and releases Ctrl
@@ -572,8 +575,6 @@ private fun QwertyKeyboard(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        modeSwitch()
-
         KeyboardRow(chars = "1234567890", onChar = { ch -> onChar(ch, controlLatched) })
 
         letterRows.take(2).forEach { row ->
@@ -619,21 +620,23 @@ private fun QwertyKeyboard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
+            ModeCycleKey(mode, Modifier.weight(1.05f), onModeChange)
             KeyboardActionKey(
                 label = if (controlLatched) "Ctrl ON" else "Ctrl",
-                modifier = Modifier.weight(1.25f),
+                modifier = Modifier.weight(1.15f),
                 selected = controlLatched,
                 onClick = { controlLatched = !controlLatched },
             )
-            KeyboardActionKey(",", modifier = Modifier.weight(0.75f)) { onChar(',', controlLatched) }
+            KeyboardActionKey(",", modifier = Modifier.weight(0.7f)) { onChar(',', controlLatched) }
             KeyboardActionKey(
                 "Space",
-                modifier = Modifier.weight(4f),
+                modifier = Modifier.weight(3.4f),
             ) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_SPACE, withCtrl = controlLatched)) }
-            KeyboardActionKey(".", modifier = Modifier.weight(1f)) { onChar('.', controlLatched) }
+            KeyboardActionKey("Clip", modifier = Modifier.weight(0.9f), onClick = onPaste)
+            KeyboardActionKey(".", modifier = Modifier.weight(0.7f)) { onChar('.', controlLatched) }
             KeyboardActionKey(
                 "Enter",
-                modifier = Modifier.weight(1.5f),
+                modifier = Modifier.weight(1.15f),
             ) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_ENTER, withCtrl = controlLatched)) }
         }
     }
@@ -641,10 +644,11 @@ private fun QwertyKeyboard(
 
 @Composable
 private fun SymbolKeyboard(
-    modeSwitch: @Composable () -> Unit,
+    mode: VirtualKeyboardMode,
     onModeChange: (VirtualKeyboardMode) -> Unit,
     onChar: (Char, Boolean) -> Unit,
     onKey: (VirtualKey) -> Unit,
+    onPaste: () -> Unit,
 ) {
     HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
     Column(
@@ -654,7 +658,6 @@ private fun SymbolKeyboard(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        modeSwitch()
         KeyboardRow(chars = "1234567890") { onChar(it, false) }
         SymbolRow(listOf("-", "/", ":", ";", "(", ")", "¥", "&", "@", "\""), onChar)
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -666,12 +669,13 @@ private fun SymbolKeyboard(
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            KeyboardActionKey("ABC", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.QWERTY) }
-            KeyboardActionKey("かな", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.KANA) }
+            ModeCycleKey(mode, Modifier.weight(1.05f), onModeChange)
+            KeyboardActionKey("Clip", Modifier.weight(1f), onClick = onPaste)
             KeyboardActionKey("編集", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.EDITING) }
-            KeyboardActionKey("Space", Modifier.weight(2f)) {
+            KeyboardActionKey("Space", Modifier.weight(2.7f)) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_SPACE))
             }
+            KeyboardActionKey(".", Modifier.weight(0.75f)) { onChar('.', false) }
             KeyboardActionKey("Enter", Modifier.weight(1.25f)) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_ENTER))
             }
@@ -681,13 +685,21 @@ private fun SymbolKeyboard(
 
 @Composable
 private fun EditingKeyboard(
-    modeSwitch: @Composable () -> Unit,
+    mode: VirtualKeyboardMode,
     onModeChange: (VirtualKeyboardMode) -> Unit,
     onKey: (VirtualKey) -> Unit,
+    onPaste: () -> Unit,
 ) {
     var controlLatched by remember { mutableStateOf(false) }
+    var shiftLatched by remember { mutableStateOf(false) }
     fun key(keyCode: Int, forceCtrl: Boolean = false) {
-        onKey(VirtualKey.AndroidKeyCode(keyCode, withCtrl = forceCtrl || controlLatched))
+        onKey(
+            VirtualKey.AndroidKeyCode(
+                keyCode,
+                withCtrl = forceCtrl || controlLatched,
+                withShift = shiftLatched,
+            ),
+        )
     }
 
     HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
@@ -698,7 +710,6 @@ private fun EditingKeyboard(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        modeSwitch()
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             KeyboardActionKey("Esc", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_ESCAPE) }
             KeyboardActionKey("Tab", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_TAB) }
@@ -715,34 +726,51 @@ private fun EditingKeyboard(
             KeyboardActionKey(if (controlLatched) "Ctrl ON" else "Ctrl", Modifier.weight(1.25f), selected = controlLatched) {
                 controlLatched = !controlLatched
             }
-            listOf("A", "C", "V", "X", "Z", "Y").forEach { label ->
+            KeyboardActionKey(if (shiftLatched) "Shift ON" else "Shift", Modifier.weight(1.25f), selected = shiftLatched) {
+                shiftLatched = !shiftLatched
+            }
+            listOf("A", "C", "V", "X").forEach { label ->
                 val keyCode = AKeyEvent.KEYCODE_A + (label.first() - 'A')
                 KeyboardActionKey("Ctrl+$label", Modifier.weight(1f)) { key(keyCode, forceCtrl = true) }
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            KeyboardActionKey("ABC", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.QWERTY) }
-            KeyboardActionKey("かな", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.KANA) }
-            KeyboardActionKey("記号", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.SYMBOLS) }
-            KeyboardActionKey("Space", Modifier.weight(2f)) { key(AKeyEvent.KEYCODE_SPACE) }
-            KeyboardActionKey("Enter", Modifier.weight(1.25f)) { key(AKeyEvent.KEYCODE_ENTER) }
+            ModeCycleKey(mode, Modifier.weight(1.05f), onModeChange)
+            listOf("Z", "Y").forEach { label ->
+                val keyCode = AKeyEvent.KEYCODE_A + (label.first() - 'A')
+                KeyboardActionKey("Ctrl+$label", Modifier.weight(1f)) { key(keyCode, forceCtrl = true) }
+            }
+            KeyboardActionKey("Clip", Modifier.weight(1f), onClick = onPaste)
+            KeyboardActionKey("Space", Modifier.weight(2.2f)) { key(AKeyEvent.KEYCODE_SPACE) }
+            KeyboardActionKey("Enter", Modifier.weight(1.15f)) { key(AKeyEvent.KEYCODE_ENTER) }
         }
     }
 }
 
 @Composable
 private fun KanaKeyboard(
-    modeSwitch: @Composable () -> Unit,
+    mode: VirtualKeyboardMode,
     onModeChange: (VirtualKeyboardMode) -> Unit,
     onText: (String) -> Unit,
     onKey: (VirtualKey) -> Unit,
+    onPaste: () -> Unit,
 ) {
-    var modifier by remember { mutableStateOf(KanaModifier.NONE) }
+    var lastKana by remember { mutableStateOf<KanaOutput?>(null) }
 
     fun sendKana(key: KanaKey, direction: FlickDirection) {
-        val romaji = key.romaji(direction, modifier) ?: return
-        onText(romaji)
-        modifier = KanaModifier.NONE
+        val output = key.output(direction) ?: return
+        onText(output.romaji)
+        lastKana = output
+    }
+
+    fun applyModifier(modifier: KanaModifier) {
+        val previous = lastKana ?: return
+        val replacement = previous.modified(modifier) ?: return
+        // Japanese IMEs usually keep the previous kana in composition; one Backspace
+        // removes that composed kana before the replacement romaji is typed.
+        onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL))
+        onText(replacement.romaji)
+        lastKana = replacement
     }
 
     HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
@@ -753,7 +781,6 @@ private fun KanaKeyboard(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        modeSwitch()
         listOf(
             listOf(KanaKey.A, KanaKey.KA, KanaKey.SA),
             listOf(KanaKey.TA, KanaKey.NA, KanaKey.HA),
@@ -764,21 +791,20 @@ private fun KanaKeyboard(
                 row.forEachIndexed { colIndex, key ->
                     when {
                         key != null -> KanaFlickKey(key, Modifier.weight(1f)) { sendKana(key, it) }
-                        rowIndex == 3 && colIndex == 0 -> KeyboardActionKey("記号", Modifier.weight(1f)) {
-                            onModeChange(VirtualKeyboardMode.SYMBOLS)
-                        }
+                        rowIndex == 3 && colIndex == 0 -> ModeCycleKey(mode, Modifier.weight(1f), onModeChange)
                         else -> KeyboardActionKey("削除", Modifier.weight(1f)) {
                             onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL))
+                            lastKana = null
                         }
                     }
                 }
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            KeyboardActionKey("ABC", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.QWERTY) }
-            KeyboardActionKey(modifier.label, Modifier.weight(1.25f), selected = modifier != KanaModifier.NONE) {
-                modifier = modifier.next()
-            }
+            KeyboardActionKey("゛", Modifier.weight(0.8f)) { applyModifier(KanaModifier.DAKUTEN) }
+            KeyboardActionKey("゜", Modifier.weight(0.8f)) { applyModifier(KanaModifier.HANDAKUTEN) }
+            KeyboardActionKey("小", Modifier.weight(0.8f)) { applyModifier(KanaModifier.SMALL) }
+            KeyboardActionKey("Clip", Modifier.weight(1f), onClick = onPaste)
             KeyboardActionKey("空白/変換", Modifier.weight(2f)) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_SPACE))
             }
@@ -853,31 +879,23 @@ private fun KeyboardActionKey(
 }
 
 @Composable
-private fun ModeSwitchRow(
-    mode: VirtualKeyboardMode,
-    onModeChange: (VirtualKeyboardMode) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        ModeKey("ABC", mode == VirtualKeyboardMode.QWERTY, Modifier.weight(1f)) {
-            onModeChange(VirtualKeyboardMode.QWERTY)
-        }
-        ModeKey("かな", mode == VirtualKeyboardMode.KANA, Modifier.weight(1f)) {
-            onModeChange(VirtualKeyboardMode.KANA)
-        }
-        ModeKey("記号", mode == VirtualKeyboardMode.SYMBOLS, Modifier.weight(1f)) {
-            onModeChange(VirtualKeyboardMode.SYMBOLS)
-        }
-        ModeKey("編集", mode == VirtualKeyboardMode.EDITING, Modifier.weight(1f)) {
-            onModeChange(VirtualKeyboardMode.EDITING)
-        }
-        KeyboardActionKey("x", modifier = Modifier.width(46.dp), onClick = onDismiss)
-    }
+private fun ModeKey(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    KeyboardActionKey(label = label, modifier = modifier, selected = selected, onClick = onClick)
 }
 
 @Composable
-private fun ModeKey(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    KeyboardActionKey(label = label, modifier = modifier, selected = selected, onClick = onClick)
+private fun ModeCycleKey(
+    mode: VirtualKeyboardMode,
+    modifier: Modifier,
+    onModeChange: (VirtualKeyboardMode) -> Unit,
+) {
+    val (label, next) = when (mode) {
+        VirtualKeyboardMode.KANA -> "ABC" to VirtualKeyboardMode.QWERTY
+        VirtualKeyboardMode.QWERTY -> "?123" to VirtualKeyboardMode.SYMBOLS
+        VirtualKeyboardMode.SYMBOLS -> "かな" to VirtualKeyboardMode.KANA
+        VirtualKeyboardMode.EDITING -> "ABC" to VirtualKeyboardMode.QWERTY
+    }
+    KeyboardActionKey(label, modifier) { onModeChange(next) }
 }
 
 @Composable
@@ -890,17 +908,28 @@ private fun SymbolRow(symbols: List<String>, onChar: (Char, Boolean) -> Unit) {
 }
 
 private enum class FlickDirection { CENTER, LEFT, UP, RIGHT, DOWN }
-private enum class KanaModifier(val label: String) {
-    NONE("小/゛/゜"),
-    DAKUTEN("゛"),
-    HANDAKUTEN("゜"),
-    SMALL("小");
+private enum class KanaModifier { DAKUTEN, HANDAKUTEN, SMALL }
 
-    fun next(): KanaModifier = when (this) {
-        NONE -> DAKUTEN
-        DAKUTEN -> HANDAKUTEN
-        HANDAKUTEN -> SMALL
-        SMALL -> NONE
+private data class KanaOutput(val base: String, val romaji: String) {
+    fun modified(modifier: KanaModifier): KanaOutput? {
+        val replacement = when (modifier) {
+            KanaModifier.DAKUTEN -> when (base) {
+                "ka" -> "ga"; "ki" -> "gi"; "ku" -> "gu"; "ke" -> "ge"; "ko" -> "go"
+                "sa" -> "za"; "shi" -> "ji"; "su" -> "zu"; "se" -> "ze"; "so" -> "zo"
+                "ta" -> "da"; "chi" -> "ji"; "tsu" -> "zu"; "te" -> "de"; "to" -> "do"
+                "ha" -> "ba"; "hi" -> "bi"; "fu" -> "bu"; "he" -> "be"; "ho" -> "bo"
+                else -> null
+            }
+            KanaModifier.HANDAKUTEN -> when (base) {
+                "ha" -> "pa"; "hi" -> "pi"; "fu" -> "pu"; "he" -> "pe"; "ho" -> "po"
+                else -> null
+            }
+            KanaModifier.SMALL -> when (base) {
+                "ya" -> "xya"; "yu" -> "xyu"; "yo" -> "xyo"; "tsu" -> "xtu"
+                else -> null
+            }
+        } ?: return null
+        return KanaOutput(base = replacement, romaji = replacement)
     }
 }
 
@@ -923,7 +952,7 @@ private enum class KanaKey(
     RA("ら", "ra", "ri", "ru", "re", "ro"),
     WA("わ", "wa", "wo", null, null, "nn");
 
-    fun romaji(direction: FlickDirection, modifier: KanaModifier): String? {
+    fun output(direction: FlickDirection): KanaOutput? {
         val base = when (direction) {
             FlickDirection.CENTER -> center
             FlickDirection.LEFT -> left
@@ -931,33 +960,7 @@ private enum class KanaKey(
             FlickDirection.RIGHT -> right
             FlickDirection.DOWN -> down
         } ?: return null
-        return applyModifier(base, modifier)
-    }
-
-    private fun applyModifier(base: String, modifier: KanaModifier): String = when (modifier) {
-        KanaModifier.NONE -> base
-        KanaModifier.DAKUTEN -> when {
-            base.startsWith("k") -> "g" + base.drop(1)
-            base.startsWith("s") -> if (base == "shi") "ji" else "z" + base.drop(1)
-            base == "chi" -> "ji"
-            base == "tsu" -> "zu"
-            base.startsWith("t") -> "d" + base.drop(1)
-            base.startsWith("h") -> "b" + base.drop(1)
-            base == "fu" -> "bu"
-            else -> base
-        }
-        KanaModifier.HANDAKUTEN -> when {
-            base.startsWith("h") -> "p" + base.drop(1)
-            base == "fu" -> "pu"
-            else -> base
-        }
-        KanaModifier.SMALL -> when (base) {
-            "ya" -> "xya"
-            "yu" -> "xyu"
-            "yo" -> "xyo"
-            "tsu" -> "xtu"
-            else -> base
-        }
+        return KanaOutput(base = base, romaji = base)
     }
 }
 
