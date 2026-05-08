@@ -43,6 +43,10 @@ import com.pgratz.artouchpad.TouchMode
 import com.pgratz.artouchpad.TouchpadViewModel
 import com.pgratz.artouchpad.VirtualKey
 import com.pgratz.artouchpad.VirtualKeyboardMode
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -64,6 +68,8 @@ private const val MOVE_THRESHOLD = 5f
 private const val TAP_MAX_MS = 220L
 private const val DOUBLE_TAP_WINDOW_MS = 300L
 private const val TAP_DRAG_HOLD_MS = 140L
+private const val EDITING_ARROW_INITIAL_REPEAT_DELAY_MS = 300L
+private const val EDITING_ARROW_REPEAT_INTERVAL_MS = 65L
 private const val GESTURE_TAG = "TouchpadGesture"
 
 // Root composable. Collects ViewModel state and renders either SettingsPanel (when
@@ -723,21 +729,21 @@ private fun EditingKeyboard(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             EditKey("⊡", Modifier.weight(1f)) { onCtrlShortcut(AKeyEvent.KEYCODE_A) }
-            EditKey("↑", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_UP) }
+            RepeatingEditingArrowKey("↑", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_UP) }
             EditKey("⌫", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DEL) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            EditKey("←", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_LEFT) }
+            RepeatingEditingArrowKey("←", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_LEFT) }
             EditKey("⇧", Modifier.weight(1f), selected = shiftLatched) {
                 val next = !shiftLatched
                 shiftLatched = next
                 onShiftLatchChanged(next)
             }
-            EditKey("→", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_RIGHT) }
+            RepeatingEditingArrowKey("→", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_RIGHT) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             EditKey("⧉", Modifier.weight(1f)) { onCtrlShortcut(AKeyEvent.KEYCODE_C) }
-            EditKey("↓", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_DOWN) }
+            RepeatingEditingArrowKey("↓", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_DOWN) }
             EditKey("⎘", Modifier.weight(1f)) { onCtrlShortcut(AKeyEvent.KEYCODE_V) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -745,6 +751,64 @@ private fun EditingKeyboard(
             EditKey("⎵", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_SPACE) }
             EditKey("↲", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_ENTER) }
         }
+    }
+}
+
+@Composable
+private fun RepeatingEditingArrowKey(
+    label: String,
+    modifier: Modifier,
+    onPress: () -> Unit,
+) {
+    var repeatJob by remember { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            repeatJob?.cancel()
+            repeatJob = null
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .height(EditingKeyHeight)
+            .clip(RoundedCornerShape(7.dp))
+            .background(Color(0xFF1F2C3A))
+            .pointerInput(onPress) {
+                while (true) {
+                    val pointerId = awaitPointerEventScope {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        down.consume()
+                        down.id
+                    }
+                    onPress()
+                    repeatJob?.cancel()
+                    repeatJob = launch {
+                        delay(EDITING_ARROW_INITIAL_REPEAT_DELAY_MS)
+                        while (isActive) {
+                            onPress()
+                            delay(EDITING_ARROW_REPEAT_INTERVAL_MS)
+                        }
+                    }
+                    awaitPointerEventScope {
+                        var pressed = true
+                        while (pressed) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == pointerId }
+                            if (change == null || !change.pressed) {
+                                pressed = false
+                            } else {
+                                change.consume()
+                            }
+                        }
+                    }
+                    repeatJob?.cancel()
+                    repeatJob = null
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TEXT_DIM, maxLines = 1)
     }
 }
 
