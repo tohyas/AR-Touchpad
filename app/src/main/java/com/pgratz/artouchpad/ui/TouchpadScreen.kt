@@ -520,13 +520,12 @@ private fun VirtualKeyboardPanel(
     mode: VirtualKeyboardMode,
     onModeChange: (VirtualKeyboardMode) -> Unit,
     onKey: (VirtualKey) -> Unit,
-    onChar: (Char) -> Unit,
+    onChar: (Char, Boolean) -> Unit,
     onPasteSend: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     when (mode) {
         VirtualKeyboardMode.QWERTY -> QwertyKeyboard(
-            onModeChange = onModeChange,
             onKey = onKey,
             onChar = onChar,
             onDismiss = onDismiss,
@@ -541,12 +540,14 @@ private fun VirtualKeyboardPanel(
 
 @Composable
 private fun QwertyKeyboard(
-    onModeChange: (VirtualKeyboardMode) -> Unit,
     onKey: (VirtualKey) -> Unit,
-    onChar: (Char) -> Unit,
+    onChar: (Char, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var shift by remember { mutableStateOf(false) }
+    // Logical latch only: each Ctrl shortcut physically presses and releases Ctrl
+    // around the target key, so the uinput device never keeps Ctrl held indefinitely.
+    var controlLatched by remember { mutableStateOf(false) }
     val letterRows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
 
     HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
@@ -564,14 +565,15 @@ private fun QwertyKeyboard(
             KeyboardActionKey("x", modifier = Modifier.width(48.dp), onClick = onDismiss)
         }
 
-        KeyboardRow(chars = "1234567890", onChar = onChar)
+        KeyboardRow(chars = "1234567890", onChar = { ch -> onChar(ch, false) })
 
         letterRows.take(2).forEach { row ->
             KeyboardRow(
                 chars = row,
                 shifted = shift,
                 onChar = { ch ->
-                    onChar(if (shift) ch.uppercaseChar() else ch)
+                    val output = if (shift && !controlLatched) ch.uppercaseChar() else ch.lowercaseChar()
+                    onChar(output, controlLatched)
                     shift = false
                 },
             )
@@ -592,7 +594,8 @@ private fun QwertyKeyboard(
                     label = if (shift) ch.uppercaseChar().toString() else ch.toString(),
                     modifier = Modifier.weight(1f),
                 ) {
-                    onChar(if (shift) ch.uppercaseChar() else ch)
+                    val output = if (shift && !controlLatched) ch.uppercaseChar() else ch.lowercaseChar()
+                    onChar(output, controlLatched)
                     shift = false
                 }
             }
@@ -607,15 +610,18 @@ private fun QwertyKeyboard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            KeyboardActionKey("Paste", modifier = Modifier.weight(1.25f)) {
-                onModeChange(VirtualKeyboardMode.PASTE)
-            }
-            KeyboardActionKey(",", modifier = Modifier.weight(0.75f)) { onChar(',') }
+            KeyboardActionKey(
+                label = if (controlLatched) "Ctrl ON" else "Ctrl",
+                modifier = Modifier.weight(1.25f),
+                selected = controlLatched,
+                onClick = { controlLatched = !controlLatched },
+            )
+            KeyboardActionKey(",", modifier = Modifier.weight(0.75f)) { onChar(',', false) }
             KeyboardActionKey(
                 "Space",
                 modifier = Modifier.weight(4f),
             ) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_SPACE)) }
-            KeyboardActionKey(".", modifier = Modifier.weight(1f)) { onChar('.') }
+            KeyboardActionKey(".", modifier = Modifier.weight(1f)) { onChar('.', false) }
             KeyboardActionKey(
                 "Enter",
                 modifier = Modifier.weight(1.5f),

@@ -37,7 +37,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(17)  // bumped — separate uinput keyboard device for QWERTY mode
+        .version(18)  // bumped — Ctrl-modified uinput keyboard presses for QWERTY mode
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -168,6 +168,6 @@ class ShizukuMouseController {
     fun ctrlScroll(amount: Float) { runCatching { service?.ctrlScroll(amount) } }
 
     // Sends one Linux key through the AR Touchpad uinput keyboard device.
-    fun pressHardwareKey(linuxKeyCode: Int, withShift: Boolean = false): Boolean =
-        runCatching { service?.pressHardwareKey(linuxKeyCode, withShift) == true }.getOrDefault(false)
+    fun pressHardwareKey(linuxKeyCode: Int, withShift: Boolean = false, withCtrl: Boolean = false): Boolean =
+        runCatching { service?.pressHardwareKey(linuxKeyCode, withShift, withCtrl) == true }.getOrDefault(false)
 }

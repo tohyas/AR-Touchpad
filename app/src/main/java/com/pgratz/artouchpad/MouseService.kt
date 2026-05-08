@@ -274,7 +274,7 @@ class MouseService : IMouseService.Stub() {
         Log.d(TAG, "typeText \"$text\" displayId=$displayId")
     }
 
-    override fun pressHardwareKey(linuxKeyCode: Int, withShift: Boolean): Boolean {
+    override fun pressHardwareKey(linuxKeyCode: Int, withShift: Boolean, withCtrl: Boolean): Boolean {
         if (!ensureKeyboardDeviceReady()) {
             Log.w(TAG, "fallback injection used: uinput keyboard unavailable key=$linuxKeyCode")
             return false
@@ -285,8 +285,14 @@ class MouseService : IMouseService.Stub() {
                 keyEv(type, code, value) >= 0
 
             var ok = true
+            var ctrlPressed = false
             var shiftPressed = false
-            if (withShift) {
+            if (withCtrl) {
+                ok = writeKey(EV_KEY, KEY_LEFTCTRL, 1)
+                ctrlPressed = ok
+                keySync()
+            }
+            if (withShift && ok) {
                 ok = writeKey(EV_KEY, KEY_LEFTSHIFT, 1)
                 shiftPressed = ok
                 keySync()
@@ -300,14 +306,20 @@ class MouseService : IMouseService.Stub() {
                 ok = writeKey(EV_KEY, KEY_LEFTSHIFT, 0) && ok
                 keySync()
             }
+            if (ctrlPressed) {
+                ok = writeKey(EV_KEY, KEY_LEFTCTRL, 0) && ok
+                keySync()
+            }
             if (ok) {
-                Log.d(TAG, "key sent through uinput keyboard key=$linuxKeyCode shift=$withShift")
+                Log.d(TAG, "key sent through uinput keyboard key=$linuxKeyCode shift=$withShift ctrl=$withCtrl")
             } else {
                 Log.w(TAG, "fallback injection used: uinput keyboard write failed key=$linuxKeyCode")
             }
             ok
         } catch (e: Exception) {
-            Log.e(TAG, "uinput keyboard key failed key=$linuxKeyCode shift=$withShift: $e")
+            if (withShift) runCatching { keyEv(EV_KEY, KEY_LEFTSHIFT, 0); keySync() }
+            if (withCtrl) runCatching { keyEv(EV_KEY, KEY_LEFTCTRL, 0); keySync() }
+            Log.e(TAG, "uinput keyboard key failed key=$linuxKeyCode shift=$withShift ctrl=$withCtrl: $e")
             false
         }
     }

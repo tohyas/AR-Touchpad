@@ -59,7 +59,7 @@ interface IMouseService {
 
     // Sends a Linux EV_KEY press+release through the AR Touchpad uinput keyboard device.
     // Returns false if the keyboard device could not be created or the write failed.
-    boolean pressHardwareKey(int linuxKeyCode, boolean withShift) = 12;
+    boolean pressHardwareKey(int linuxKeyCode, boolean withShift, boolean withCtrl) = 12;
 
     // Closes the uinput file descriptor and marks the device not ready.
     void destroy() = 16777114;

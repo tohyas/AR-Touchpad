@@ -34,8 +34,8 @@ enum class TouchMode { IDLE, CURSOR, SCROLL, SELECT }
 enum class VirtualKeyboardMode { QWERTY, PASTE }
 
 sealed class VirtualKey {
-    data class AndroidKeyCode(val keyCode: Int) : VirtualKey()
-    data class AsciiChar(val char: Char) : VirtualKey()
+    data class AndroidKeyCode(val keyCode: Int, val withCtrl: Boolean = false) : VirtualKey()
+    data class AsciiChar(val char: Char, val withCtrl: Boolean = false) : VirtualKey()
 }
 
 data class DisplayInfo(val id: Int, val name: String, val width: Int, val height: Int)
@@ -206,17 +206,17 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
             is VirtualKey.AndroidKeyCode -> {
                 val linuxKeyCode = androidKeyCodeToLinux(key.keyCode)
                 if (linuxKeyCode != null) {
-                    pressHardwareKey(linuxKeyCode, key.keyCode)
+                    pressHardwareKey(linuxKeyCode, key.keyCode, withCtrl = key.withCtrl)
                 } else {
                     Log.d(KEYBOARD_TAG, "fallback injection used keyCode=${key.keyCode}; output=fallback injection")
-                    mouse.pressKey(key.keyCode)
+                    if (key.withCtrl) mouse.pressKeyWithCtrl(key.keyCode) else mouse.pressKey(key.keyCode)
                 }
             }
-            is VirtualKey.AsciiChar -> typeAsciiChar(key.char)
+            is VirtualKey.AsciiChar -> typeAsciiChar(key.char, key.withCtrl)
         }
     }
 
-    fun typeAsciiChar(char: Char) {
+    fun typeAsciiChar(char: Char, withCtrl: Boolean = false) {
         val lower = char.lowercaseChar()
         val pair = when (lower) {
             in 'a'..'z' -> linuxLetterKeyCode(lower) to (KeyEvent.KEYCODE_A + (lower - 'a'))
@@ -231,14 +231,14 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
 
         if (pair != null) {
             val (linuxKeyCode, androidKeyCode) = pair
-            pressHardwareKey(linuxKeyCode, androidKeyCode, withShift)
+            pressHardwareKey(linuxKeyCode, androidKeyCode, withShift, withCtrl)
         } else {
             Log.d(KEYBOARD_TAG, "virtual key pressed char=$char; output=fallback text injection")
             mouse.typeText(char.toString())
         }
     }
 
-    fun sendRomajiKey(char: Char) = typeAsciiChar(char)
+    fun sendRomajiKey(char: Char, withCtrl: Boolean = false) = typeAsciiChar(char, withCtrl)
 
     // Input: dDist — span change in pixels this frame (positive = spreading = zoom in).
     // Accumulates until 200 px threshold to avoid jitter; each 200 px = 1 AXIS_VSCROLL detent,
@@ -317,13 +317,19 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun pressHardwareKey(linuxKeyCode: Int, androidKeyCode: Int, withShift: Boolean = false) {
-        val sent = mouse.pressHardwareKey(linuxKeyCode, withShift)
+    private fun pressHardwareKey(
+        linuxKeyCode: Int,
+        androidKeyCode: Int,
+        withShift: Boolean = false,
+        withCtrl: Boolean = false,
+    ) {
+        Log.d(KEYBOARD_TAG, "QWERTY key pressed linuxKey=$linuxKeyCode shift=$withShift ctrl=$withCtrl")
+        val sent = mouse.pressHardwareKey(linuxKeyCode, withShift, withCtrl)
         if (sent) {
-            Log.d(KEYBOARD_TAG, "key sent through uinput keyboard linuxKey=$linuxKeyCode shift=$withShift")
+            Log.d(KEYBOARD_TAG, "key sent through uinput keyboard linuxKey=$linuxKeyCode shift=$withShift ctrl=$withCtrl")
         } else {
             Log.d(KEYBOARD_TAG, "fallback injection used linuxKey=$linuxKeyCode androidKey=$androidKeyCode")
-            mouse.pressKey(androidKeyCode)
+            if (withCtrl) mouse.pressKeyWithCtrl(androidKeyCode) else mouse.pressKey(androidKeyCode)
         }
     }
 
