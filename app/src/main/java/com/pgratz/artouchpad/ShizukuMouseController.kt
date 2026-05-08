@@ -37,7 +37,7 @@ class ShizukuMouseController {
     )
         .processNameSuffix("mouse")
         .daemon(false)
-        .version(20)  // bumped — stateful uinput keyboard Shift hold
+        .version(21)  // bumped — stateful uinput keyboard Ctrl hold
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -174,5 +174,10 @@ class ShizukuMouseController {
     // Holds or releases KEY_LEFTSHIFT on the AR Touchpad uinput keyboard device.
     fun setKeyboardShiftDown(down: Boolean) {
         runCatching { service?.setKeyboardShiftDown(down) }
+    }
+
+    // Holds or releases KEY_LEFTCTRL on the AR Touchpad uinput keyboard device.
+    fun setKeyboardCtrlDown(down: Boolean) {
+        runCatching { service?.setKeyboardCtrlDown(down) }
     }
 }

@@ -83,6 +83,8 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     private var pinchAccum = 0f
     private var smoothDx = 0f
     private var smoothDy = 0f
+    private var keyboardShiftDown = false
+    private var keyboardCtrlDown = false
 
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = refresh()
@@ -253,12 +255,34 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setKeyboardShiftDown(down: Boolean) {
+        keyboardShiftDown = down
         Log.d(KEYBOARD_TAG, "keyboard physical shift down=$down")
         mouse.setKeyboardShiftDown(down)
     }
 
+    fun setKeyboardCtrlDown(down: Boolean) {
+        keyboardCtrlDown = down
+        Log.d(KEYBOARD_TAG, "keyboard physical ctrl down=$down")
+        mouse.setKeyboardCtrlDown(down)
+    }
+
     fun releaseKeyboardModifiers() {
         setKeyboardShiftDown(false)
+        setKeyboardCtrlDown(false)
+    }
+
+    fun pressCtrlShortcut(keyCode: Int) {
+        val restoreShift = keyboardShiftDown
+        val restoreCtrl = keyboardCtrlDown
+        if (restoreShift) setKeyboardShiftDown(false)
+        if (restoreCtrl) setKeyboardCtrlDown(false)
+        mouse.pressKeyWithCtrl(keyCode)
+        if (restoreCtrl && _state.value.showKeyboard && _state.value.keyboardMode == VirtualKeyboardMode.QWERTY) {
+            setKeyboardCtrlDown(true)
+        }
+        if (restoreShift && _state.value.showKeyboard && _state.value.keyboardMode == VirtualKeyboardMode.EDITING) {
+            setKeyboardShiftDown(true)
+        }
     }
 
     // Input: dDist — span change in pixels this frame (positive = spreading = zoom in).
@@ -284,7 +308,7 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         if (mode == VirtualKeyboardMode.QWERTY && !it.showKeyboard) {
             Log.d(KEYBOARD_TAG, "QWERTY keyboard opened")
         }
-        if (it.keyboardMode == VirtualKeyboardMode.EDITING && mode != VirtualKeyboardMode.EDITING) {
+        if (it.keyboardMode != mode) {
             releaseKeyboardModifiers()
         }
         it.copy(showKeyboard = true, keyboardMode = mode)
@@ -310,7 +334,10 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     fun setSensitivity(v: Float) = _state.update { it.copy(sensitivity = v) }
     fun setScrollSpeed(v: Float) = _state.update { it.copy(scrollSpeed = v) }
     fun setNaturalScroll(v: Boolean) = _state.update { it.copy(naturalScroll = v) }
-    fun toggleSettings() = _state.update { it.copy(showSettings = !it.showSettings) }
+    fun toggleSettings() = _state.update {
+        if (!it.showSettings) releaseKeyboardModifiers()
+        it.copy(showSettings = !it.showSettings)
+    }
 
     // Cleans up the accessibility callback, display listener, and mouse service when the
     // ViewModel is destroyed (e.g. app process ends or activity is permanently finished).

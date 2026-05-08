@@ -64,6 +64,9 @@ interface IMouseService {
     // Physically holds or releases KEY_LEFTSHIFT on the virtual uinput keyboard.
     void setKeyboardShiftDown(boolean down) = 13;
 
+    // Physically holds or releases KEY_LEFTCTRL on the virtual uinput keyboard.
+    void setKeyboardCtrlDown(boolean down) = 14;
+
     // Closes the uinput file descriptor and marks the device not ready.
     void destroy() = 16777114;
 }
