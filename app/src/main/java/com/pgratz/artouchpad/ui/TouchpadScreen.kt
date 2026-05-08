@@ -43,6 +43,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.pgratz.artouchpad.DisplayInfo
 import com.pgratz.artouchpad.TouchMode
 import com.pgratz.artouchpad.TouchpadViewModel
+import com.pgratz.artouchpad.VirtualKey
+import com.pgratz.artouchpad.VirtualKeyboardMode
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -122,8 +124,12 @@ fun TouchpadScreen(viewModel: TouchpadViewModel) {
                 onSelectEnd = viewModel::endSelectDrag,
             )
             if (state.showKeyboard) {
-                KeyboardProxy(
-                    onSend    = { text -> viewModel.sendKeyboardText(text) },
+                VirtualKeyboardPanel(
+                    mode = state.keyboardMode,
+                    onModeChange = viewModel::setKeyboardMode,
+                    onKey = viewModel::pressVirtualKey,
+                    onChar = viewModel::sendRomajiKey,
+                    onPasteSend = { text -> viewModel.sendKeyboardText(text) },
                     onDismiss = viewModel::toggleKeyboard,
                 )
             }
@@ -507,13 +513,185 @@ private fun TouchpadSurface(
     }
 }
 
-// A thin input strip containing an Android EditText that hosts the system keyboard (Gboard).
-// Text accumulates in the EditText; tapping ↵ or the send button calls onSend with the full
-// string so it can be injected to the glasses after the phone IME is dismissed.
-// Accumulates on the phone so Gboard swipe/autocorrect work normally without interfering
-// with the glasses display's IME session.
+// Keyboard panel host. QWERTY is the default virtual hardware-key mode; Paste keeps the
+// previous phone-IME text buffer available as a fallback.
 @Composable
-private fun KeyboardProxy(
+private fun VirtualKeyboardPanel(
+    mode: VirtualKeyboardMode,
+    onModeChange: (VirtualKeyboardMode) -> Unit,
+    onKey: (VirtualKey) -> Unit,
+    onChar: (Char) -> Unit,
+    onPasteSend: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    when (mode) {
+        VirtualKeyboardMode.QWERTY -> QwertyKeyboard(
+            onModeChange = onModeChange,
+            onKey = onKey,
+            onChar = onChar,
+            onDismiss = onDismiss,
+        )
+        VirtualKeyboardMode.PASTE -> PasteKeyboardProxy(
+            onModeChange = onModeChange,
+            onSend = onPasteSend,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
+@Composable
+private fun QwertyKeyboard(
+    onModeChange: (VirtualKeyboardMode) -> Unit,
+    onKey: (VirtualKey) -> Unit,
+    onChar: (Char) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var shift by remember { mutableStateOf(false) }
+    val letterRows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
+
+    HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SURFACE)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            KeyboardActionKey("x", modifier = Modifier.width(48.dp), onClick = onDismiss)
+        }
+
+        KeyboardRow(chars = "1234567890", onChar = onChar)
+
+        letterRows.take(2).forEach { row ->
+            KeyboardRow(
+                chars = row,
+                shifted = shift,
+                onChar = { ch ->
+                    onChar(if (shift) ch.uppercaseChar() else ch)
+                    shift = false
+                },
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            KeyboardActionKey(
+                label = "Shift",
+                modifier = Modifier.weight(1.25f),
+                selected = shift,
+                onClick = { shift = !shift },
+            )
+            letterRows[2].forEach { ch ->
+                KeyboardLetterKey(
+                    label = if (shift) ch.uppercaseChar().toString() else ch.toString(),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    onChar(if (shift) ch.uppercaseChar() else ch)
+                    shift = false
+                }
+            }
+            KeyboardActionKey(
+                label = "Del",
+                modifier = Modifier.weight(1.5f),
+                onClick = { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL)) },
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            KeyboardActionKey("Paste", modifier = Modifier.weight(1.25f)) {
+                onModeChange(VirtualKeyboardMode.PASTE)
+            }
+            KeyboardActionKey(",", modifier = Modifier.weight(0.75f)) { onChar(',') }
+            KeyboardActionKey(
+                "Space",
+                modifier = Modifier.weight(4f),
+            ) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_SPACE)) }
+            KeyboardActionKey(".", modifier = Modifier.weight(1f)) { onChar('.') }
+            KeyboardActionKey(
+                "Enter",
+                modifier = Modifier.weight(1.5f),
+            ) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_ENTER)) }
+        }
+    }
+}
+
+@Composable
+private fun KeyboardRow(
+    chars: String,
+    shifted: Boolean = false,
+    onChar: (Char) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        chars.forEach { ch ->
+            val out = if (shifted) ch.uppercaseChar() else ch
+            KeyboardLetterKey(
+                label = out.toString(),
+                modifier = Modifier.weight(1f),
+                onClick = { onChar(out) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun KeyboardLetterKey(
+    label: String,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(38.dp),
+        shape = RoundedCornerShape(7.dp),
+        contentPadding = PaddingValues(0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF263545),
+            contentColor = TEXT,
+        ),
+    ) {
+        Text(label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun KeyboardActionKey(
+    label: String,
+    modifier: Modifier,
+    selected: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(38.dp),
+        shape = RoundedCornerShape(7.dp),
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) ACCENT_DIM else Color(0xFF1F2C3A),
+            contentColor = if (selected) ACCENT else TEXT_DIM,
+        ),
+    ) {
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    }
+}
+
+// A thin fallback input strip containing an Android EditText that hosts the system keyboard.
+// Text accumulates in the EditText; tapping the send button injects the full string to the
+// glasses display after the phone IME is dismissed.
+@Composable
+private fun PasteKeyboardProxy(
+    onModeChange: (VirtualKeyboardMode) -> Unit,
     onSend: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -534,6 +712,9 @@ private fun KeyboardProxy(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        TextButton(onClick = { onModeChange(VirtualKeyboardMode.QWERTY) }) {
+            Text("QWERTY", color = ACCENT, fontSize = 12.sp)
+        }
         AndroidView(
             factory = { ctx ->
                 EditText(ctx).apply {

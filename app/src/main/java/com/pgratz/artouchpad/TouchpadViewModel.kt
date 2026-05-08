@@ -17,8 +17,10 @@ package com.pgratz.artouchpad
 import android.app.Application
 import android.content.Context
 import android.hardware.display.DisplayManager
+import android.util.Log
 import android.util.DisplayMetrics
 import android.view.Display
+import android.view.KeyEvent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
@@ -29,6 +31,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class TouchMode { IDLE, CURSOR, SCROLL, SELECT }
+enum class VirtualKeyboardMode { QWERTY, PASTE }
+
+sealed class VirtualKey {
+    data class AndroidKeyCode(val keyCode: Int) : VirtualKey()
+    data class AsciiChar(val char: Char) : VirtualKey()
+}
 
 data class DisplayInfo(val id: Int, val name: String, val width: Int, val height: Int)
 
@@ -47,6 +55,7 @@ data class TouchpadState(
     val showSettings: Boolean = false,
     val touchMode: TouchMode = TouchMode.IDLE,
     val showKeyboard: Boolean = false,
+    val keyboardMode: VirtualKeyboardMode = VirtualKeyboardMode.QWERTY,
 ) {
     val externalDisplayConnected get() = targetDisplay != null
     val displayWidth get() = targetDisplay?.width ?: 1920
@@ -197,6 +206,40 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     // Converts text to key events and injects them to the focused window on the glasses display.
     fun typeText(text: String) = mouse.typeText(text)
 
+    // Sends one virtual keyboard key through the service-level input path. For this first
+    // version, Android key injection is the robust fallback because it targets displayId.
+    fun pressVirtualKey(key: VirtualKey) {
+        when (key) {
+            is VirtualKey.AndroidKeyCode -> {
+                Log.d(KEYBOARD_TAG, "virtual key pressed keyCode=${key.keyCode}; output=fallback injection")
+                mouse.pressKey(key.keyCode)
+            }
+            is VirtualKey.AsciiChar -> typeAsciiChar(key.char)
+        }
+    }
+
+    fun typeAsciiChar(char: Char) {
+        val keyCode = when (char.lowercaseChar()) {
+            in 'a'..'z' -> KeyEvent.KEYCODE_A + (char.lowercaseChar() - 'a')
+            in '0'..'9' -> KeyEvent.KEYCODE_0 + (char - '0')
+            ' ' -> KeyEvent.KEYCODE_SPACE
+            '\n' -> KeyEvent.KEYCODE_ENTER
+            ',' -> KeyEvent.KEYCODE_COMMA
+            '.' -> KeyEvent.KEYCODE_PERIOD
+            else -> null
+        }
+
+        if (keyCode != null && char == char.lowercaseChar()) {
+            Log.d(KEYBOARD_TAG, "virtual key pressed char=$char keyCode=$keyCode; output=fallback injection")
+            mouse.pressKey(keyCode)
+        } else {
+            Log.d(KEYBOARD_TAG, "virtual key pressed char=$char; output=fallback text injection")
+            mouse.typeText(char.toString())
+        }
+    }
+
+    fun sendRomajiKey(char: Char) = typeAsciiChar(char)
+
     // Input: dDist — span change in pixels this frame (positive = spreading = zoom in).
     // Accumulates until 200 px threshold to avoid jitter; each 200 px = 1 AXIS_VSCROLL detent,
     // which Chrome/WebView maps to one zoom step (~10%) without affecting the system font scale.
@@ -208,19 +251,29 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
             mouse.ctrlScroll(detents.toFloat())
         }
     }
-    // Toggles showKeyboard in state, which shows or hides the KeyboardProxy strip in the UI.
-    fun toggleKeyboard() = _state.update { it.copy(showKeyboard = !it.showKeyboard) }
+    // Toggles showKeyboard in state, which shows or hides the virtual keyboard panel in the UI.
+    fun toggleKeyboard() = _state.update {
+        val willShow = !it.showKeyboard
+        if (willShow) Log.d(KEYBOARD_TAG, "QWERTY keyboard opened")
+        it.copy(showKeyboard = willShow, keyboardMode = if (willShow) VirtualKeyboardMode.QWERTY else it.keyboardMode)
+    }
 
-    // Input: text accumulated in the phone keyboard proxy.
+    fun setKeyboardMode(mode: VirtualKeyboardMode) = _state.update {
+        if (mode == VirtualKeyboardMode.QWERTY && !it.showKeyboard) {
+            Log.d(KEYBOARD_TAG, "QWERTY keyboard opened")
+        }
+        it.copy(showKeyboard = true, keyboardMode = mode)
+    }
+
+    // Input: text accumulated in the phone keyboard proxy fallback.
     // Dismisses the phone keyboard first (to avoid IME session conflicts), waits 200 ms for
-    // the IME to tear down, then injects the text followed by Enter to the glasses display.
+    // the IME to tear down, then injects the text to the glasses display without appending Enter.
     fun sendKeyboardText(text: String) {
         if (text.isEmpty()) { toggleKeyboard(); return }
         toggleKeyboard()
         viewModelScope.launch {
             delay(200)
             mouse.typeText(text)
-            mouse.pressKey(android.view.KeyEvent.KEYCODE_ENTER)
         }
     }
 
@@ -240,5 +293,9 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         TouchpadAccessibilityService.onExternalTextFocus = null
         displayManager.unregisterDisplayListener(displayListener)
         mouse.destroy()
+    }
+
+    companion object {
+        private const val KEYBOARD_TAG = "VirtualKeyboard"
     }
 }
