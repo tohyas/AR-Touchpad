@@ -19,6 +19,7 @@ import android.util.Log
 import android.view.KeyEvent as AKeyEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -614,7 +615,7 @@ private fun QwertyKeyboard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            ModeCycleKey(mode, Modifier.weight(1.05f), onModeChange)
+            ModeCycleKey(mode, Modifier.weight(1.05f), onModeChange = onModeChange)
             KeyboardActionKey("◂I▸", Modifier.weight(1.05f)) { onModeChange(VirtualKeyboardMode.EDITING) }
             KeyboardActionKey(",", modifier = Modifier.weight(0.75f)) { onChar(',', false) }
             KeyboardActionKey(
@@ -658,7 +659,7 @@ private fun SymbolKeyboard(
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            ModeCycleKey(mode, Modifier.weight(1.05f), onModeChange)
+            ModeCycleKey(mode, Modifier.weight(1.05f), onModeChange = onModeChange)
             KeyboardActionKey("◂I▸", Modifier.weight(1.05f)) { onModeChange(VirtualKeyboardMode.EDITING) }
             KeyboardActionKey("ABC", Modifier.weight(1f)) { onModeChange(VirtualKeyboardMode.QWERTY) }
             KeyboardActionKey("⎵", Modifier.weight(2.6f)) {
