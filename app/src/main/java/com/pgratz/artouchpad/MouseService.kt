@@ -304,11 +304,13 @@ class MouseService : IMouseService.Stub() {
                 shiftPressed = ok
                 keySync()
             }
+            if (ctrlPressed || shiftPressed) Thread.sleep(25)
             if (ok) ok = writeKey(EV_KEY, linuxKeyCode, 1)
             keySync()
             Thread.sleep(20)
             if (ok) ok = writeKey(EV_KEY, linuxKeyCode, 0)
             keySync()
+            if (ctrlPressed || shiftPressed) Thread.sleep(25)
             if (shiftPressed) {
                 ok = writeKey(EV_KEY, KEY_LEFTSHIFT, 0) && ok
                 keySync()
