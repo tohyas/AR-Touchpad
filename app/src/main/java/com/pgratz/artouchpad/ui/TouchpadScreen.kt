@@ -69,8 +69,8 @@ private const val MOVE_THRESHOLD = 5f
 private const val TAP_MAX_MS = 220L
 private const val DOUBLE_TAP_WINDOW_MS = 300L
 private const val TAP_DRAG_HOLD_MS = 140L
-private const val EDITING_ARROW_INITIAL_REPEAT_DELAY_MS = 200L
-private const val EDITING_ARROW_REPEAT_INTERVAL_MS = 40L
+private const val KEY_REPEAT_INITIAL_DELAY_MS = 200L
+private const val KEY_REPEAT_INTERVAL_MS = 40L
 private const val GESTURE_TAG = "TouchpadGesture"
 
 // Root composable. Collects ViewModel state and renders either SettingsPanel (when
@@ -622,7 +622,7 @@ private fun QwertyKeyboard(
                     shift = false
                 }
             }
-            KeyboardActionKey(
+            RepeatingKeyboardActionKey(
                 label = "⌫",
                 modifier = Modifier.weight(1.5f),
                 onClick = { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL)) },
@@ -646,8 +646,8 @@ private fun QwertyKeyboard(
                 modifier = Modifier.weight(1.9f),
             ) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_SPACE)) }
             KeyboardActionKey(".", modifier = Modifier.weight(0.65f)) { onChar('.', false) }
-            KeyboardActionKey("←", Modifier.weight(0.7f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_LEFT)) }
-            KeyboardActionKey("→", Modifier.weight(0.7f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_RIGHT)) }
+            RepeatingKeyboardActionKey("←", Modifier.weight(0.7f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_LEFT)) }
+            RepeatingKeyboardActionKey("→", Modifier.weight(0.7f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_RIGHT)) }
             KeyboardActionKey(
                 "↲",
                 modifier = Modifier.weight(1.5f),
@@ -677,7 +677,7 @@ private fun SymbolKeyboard(
             listOf(".", ",", "?", "!", "'", "#", "%", "+", "=").forEach { label ->
                 KeyboardLetterKey(label, Modifier.weight(1f)) { onChar(label.first(), false) }
             }
-            KeyboardActionKey("⌫", Modifier.weight(1.5f)) {
+            RepeatingKeyboardActionKey("⌫", Modifier.weight(1.5f)) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL))
             }
         }
@@ -689,8 +689,8 @@ private fun SymbolKeyboard(
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_SPACE))
             }
             KeyboardActionKey(".", Modifier.weight(0.75f)) { onChar('.', false) }
-            KeyboardActionKey("←", Modifier.weight(0.75f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_LEFT)) }
-            KeyboardActionKey("→", Modifier.weight(0.75f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_RIGHT)) }
+            RepeatingKeyboardActionKey("←", Modifier.weight(0.75f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_LEFT)) }
+            RepeatingKeyboardActionKey("→", Modifier.weight(0.75f)) { onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_RIGHT)) }
             KeyboardActionKey("↲", Modifier.weight(1f)) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_ENTER))
             }
@@ -730,21 +730,21 @@ private fun EditingKeyboard(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             EditKey("⊡", Modifier.weight(1f)) { onCtrlShortcut(AKeyEvent.KEYCODE_A) }
-            RepeatingEditingArrowKey("↑", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_UP) }
+            RepeatingKeyboardActionKey("↑", Modifier.weight(1f), height = EditingKeyHeight) { key(AKeyEvent.KEYCODE_DPAD_UP) }
             EditKey("⌫", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DEL) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            RepeatingEditingArrowKey("←", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_LEFT) }
+            RepeatingKeyboardActionKey("←", Modifier.weight(1f), height = EditingKeyHeight) { key(AKeyEvent.KEYCODE_DPAD_LEFT) }
             EditKey("⇧", Modifier.weight(1f), selected = shiftLatched) {
                 val next = !shiftLatched
                 shiftLatched = next
                 onShiftLatchChanged(next)
             }
-            RepeatingEditingArrowKey("→", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_RIGHT) }
+            RepeatingKeyboardActionKey("→", Modifier.weight(1f), height = EditingKeyHeight) { key(AKeyEvent.KEYCODE_DPAD_RIGHT) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             EditKey("⧉", Modifier.weight(1f)) { onCtrlShortcut(AKeyEvent.KEYCODE_C) }
-            RepeatingEditingArrowKey("↓", Modifier.weight(1f)) { key(AKeyEvent.KEYCODE_DPAD_DOWN) }
+            RepeatingKeyboardActionKey("↓", Modifier.weight(1f), height = EditingKeyHeight) { key(AKeyEvent.KEYCODE_DPAD_DOWN) }
             EditKey("⎘", Modifier.weight(1f)) { onCtrlShortcut(AKeyEvent.KEYCODE_V) }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -756,10 +756,12 @@ private fun EditingKeyboard(
 }
 
 @Composable
-private fun RepeatingEditingArrowKey(
+private fun RepeatingKeyboardActionKey(
     label: String,
     modifier: Modifier,
-    onPress: () -> Unit,
+    selected: Boolean = false,
+    height: Dp = KeyboardKeyHeight,
+    onClick: () -> Unit,
 ) {
     var repeatJob by remember { mutableStateOf<Job?>(null) }
 
@@ -772,10 +774,10 @@ private fun RepeatingEditingArrowKey(
 
     Box(
         modifier = modifier
-            .height(EditingKeyHeight)
+            .height(height)
             .clip(RoundedCornerShape(7.dp))
-            .background(Color(0xFF1F2C3A))
-            .pointerInput(onPress) {
+            .background(if (selected) ACCENT_DIM else Color(0xFF1F2C3A))
+            .pointerInput(onClick) {
                 coroutineScope {
                     while (true) {
                         val pointerId = awaitPointerEventScope {
@@ -783,13 +785,13 @@ private fun RepeatingEditingArrowKey(
                             down.consume()
                             down.id
                         }
-                        onPress()
+                        onClick()
                         repeatJob?.cancel()
                         repeatJob = launch {
-                            delay(EDITING_ARROW_INITIAL_REPEAT_DELAY_MS)
+                            delay(KEY_REPEAT_INITIAL_DELAY_MS)
                             while (isActive) {
-                                onPress()
-                                delay(EDITING_ARROW_REPEAT_INTERVAL_MS)
+                                onClick()
+                                delay(KEY_REPEAT_INTERVAL_MS)
                             }
                         }
                         awaitPointerEventScope {
@@ -811,7 +813,13 @@ private fun RepeatingEditingArrowKey(
             },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TEXT_DIM, maxLines = 1)
+        Text(
+            label,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (selected) ACCENT else TEXT_DIM,
+            maxLines = 1,
+        )
     }
 }
 
@@ -858,19 +866,19 @@ private fun KanaKeyboard(
             listOf(KanaKey.A, KanaKey.KA, KanaKey.SA).forEach { key ->
                 KanaFlickKey(key, Modifier.weight(1f)) { sendKana(key, it) }
             }
-            KeyboardActionKey("⌫", Modifier.weight(1f), height = KanaKeyHeight) {
+            RepeatingKeyboardActionKey("⌫", Modifier.weight(1f), height = KanaKeyHeight) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL))
                 kanaComposition = null
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            KeyboardActionKey("←", Modifier.weight(1f), height = KanaKeyHeight) {
+            RepeatingKeyboardActionKey("←", Modifier.weight(1f), height = KanaKeyHeight) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_LEFT))
             }
             listOf(KanaKey.TA, KanaKey.NA, KanaKey.HA).forEach { key ->
                 KanaFlickKey(key, Modifier.weight(1f)) { sendKana(key, it) }
             }
-            KeyboardActionKey("→", Modifier.weight(1f), height = KanaKeyHeight) {
+            RepeatingKeyboardActionKey("→", Modifier.weight(1f), height = KanaKeyHeight) {
                 onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DPAD_RIGHT))
             }
         }
