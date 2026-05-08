@@ -44,6 +44,7 @@ import com.pgratz.artouchpad.TouchpadViewModel
 import com.pgratz.artouchpad.VirtualKey
 import com.pgratz.artouchpad.VirtualKeyboardMode
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -775,35 +776,37 @@ private fun RepeatingEditingArrowKey(
             .clip(RoundedCornerShape(7.dp))
             .background(Color(0xFF1F2C3A))
             .pointerInput(onPress) {
-                while (true) {
-                    val pointerId = awaitPointerEventScope {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        down.consume()
-                        down.id
-                    }
-                    onPress()
-                    repeatJob?.cancel()
-                    repeatJob = launch {
-                        delay(EDITING_ARROW_INITIAL_REPEAT_DELAY_MS)
-                        while (isActive) {
-                            onPress()
-                            delay(EDITING_ARROW_REPEAT_INTERVAL_MS)
+                coroutineScope {
+                    while (true) {
+                        val pointerId = awaitPointerEventScope {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            down.id
                         }
-                    }
-                    awaitPointerEventScope {
-                        var pressed = true
-                        while (pressed) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == pointerId }
-                            if (change == null || !change.pressed) {
-                                pressed = false
-                            } else {
-                                change.consume()
+                        onPress()
+                        repeatJob?.cancel()
+                        repeatJob = launch {
+                            delay(EDITING_ARROW_INITIAL_REPEAT_DELAY_MS)
+                            while (isActive) {
+                                onPress()
+                                delay(EDITING_ARROW_REPEAT_INTERVAL_MS)
                             }
                         }
+                        awaitPointerEventScope {
+                            var pressed = true
+                            while (pressed) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == pointerId }
+                                if (change == null || !change.pressed) {
+                                    pressed = false
+                                } else {
+                                    change.consume()
+                                }
+                            }
+                        }
+                        repeatJob?.cancel()
+                        repeatJob = null
                     }
-                    repeatJob?.cancel()
-                    repeatJob = null
                 }
             },
         contentAlignment = Alignment.Center,
