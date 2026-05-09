@@ -35,13 +35,13 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TouchpadViewModel by viewModels()
-    private var keyboardWindowNonFocusable = false
+    private var windowNonFocusable = false
 
     // Sets up edge-to-edge display and mounts the full-screen TouchpadScreen composable.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        observeKeyboardFocusMode()
+        observeWindowFocusMode()
         setContent {
             ARTouchpadTheme {
                 TouchpadScreen(viewModel = viewModel)
@@ -56,26 +56,31 @@ class MainActivity : ComponentActivity() {
         viewModel.refresh()
     }
 
-    private fun observeKeyboardFocusMode() {
+    // The phone-side touchpad is only a controller for the external display, so it should
+    // not take input focus away from apps running on that display. Some dropdowns/popups
+    // dismiss as soon as their owning app loses window focus, which can happen on touch down
+    // if this Activity remains focusable. Keep the controller non-focusable during normal
+    // touchpad/keyboard use, but make it focusable while the in-app settings panel is open.
+    private fun observeWindowFocusMode() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.state
-                    .map { it.showKeyboard }
+                    .map { state -> !state.showSettings }
                     .distinctUntilChanged()
-                    .collectLatest(::setKeyboardWindowNonFocusable)
+                    .collectLatest(::setWindowNonFocusable)
             }
         }
     }
 
-    private fun setKeyboardWindowNonFocusable(enabled: Boolean) {
-        if (keyboardWindowNonFocusable == enabled) return
-        keyboardWindowNonFocusable = enabled
+    private fun setWindowNonFocusable(enabled: Boolean) {
+        if (windowNonFocusable == enabled) return
+        windowNonFocusable = enabled
         if (enabled) {
             window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         }
-        Log.d(TAG, "Virtual keyboard non-focusable window flag applied=$enabled")
+        Log.d(TAG, "Touchpad window non-focusable flag applied=$enabled")
     }
 
     companion object {
