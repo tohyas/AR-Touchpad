@@ -2,6 +2,13 @@ name: Build Debug APK
 
 on:
   push:
+    branches:
+      - add-debug-apk-workflow
+      - fix/non-focusable-touchpad
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build-debug-apk:
@@ -20,12 +27,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug.apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: AR-Touchpad-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
