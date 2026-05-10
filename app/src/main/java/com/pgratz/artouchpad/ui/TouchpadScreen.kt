@@ -836,7 +836,11 @@ private fun KanaKeyboard(
     fun sendKana(key: KanaKey, direction: FlickDirection) {
         val output = key.output(direction) ?: return
         onText(output.romaji)
-        kanaComposition = KanaComposition(variants = output.variantCycle(), index = 0)
+        kanaComposition = KanaComposition(
+            variants = output.variantCycle(),
+            index = 0,
+            eraseBackspaces = 1,
+        )
     }
 
     fun cycleKanaVariant() {
@@ -845,10 +849,16 @@ private fun KanaKeyboard(
         val nextIndex = (composition.index + 1) % composition.variants.size
         val replacement = composition.variants[nextIndex]
         // Japanese IMEs usually keep the previous kana in composition; one Backspace
-        // removes that composed kana before the replacement romaji is typed.
-        onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL))
+        // removes that composed kana before the replacement romaji is typed. Some
+        // small-kana romaji remains raw across cycles, so remember what was sent.
+        repeat(composition.eraseBackspaces) {
+            onKey(VirtualKey.AndroidKeyCode(AKeyEvent.KEYCODE_DEL))
+        }
         onText(replacement.romaji)
-        kanaComposition = composition.copy(index = nextIndex)
+        kanaComposition = composition.copy(
+            index = nextIndex,
+            eraseBackspaces = replacement.nextEraseBackspaces(composition.variants),
+        )
     }
 
     HorizontalDivider(color = Color(0xFF1E2A38), thickness = 1.dp)
@@ -1004,12 +1014,24 @@ private fun SymbolRow(symbols: List<String>, onChar: (Char, Boolean) -> Unit) {
 }
 
 private enum class FlickDirection { CENTER, LEFT, UP, RIGHT, DOWN }
-private data class KanaComposition(val variants: List<KanaOutput>, val index: Int)
+private data class KanaComposition(
+    val variants: List<KanaOutput>,
+    val index: Int,
+    val eraseBackspaces: Int,
+)
 
 private data class KanaOutput(val base: String, val romaji: String) {
+    fun nextEraseBackspaces(variants: List<KanaOutput>): Int =
+        if (variants.hasVariableRomajiLength()) romaji.length else 1
+
     fun variantCycle(): List<KanaOutput> {
         fun outputs(vararg romaji: String) = romaji.map { KanaOutput(base = base, romaji = it) }
         return when (base) {
+            "a" -> outputs("a", "xa")
+            "i" -> outputs("i", "xi")
+            "u" -> outputs("u", "xu")
+            "e" -> outputs("e", "xe")
+            "o" -> outputs("o", "xo")
             "ka" -> outputs("ka", "ga")
             "ki" -> outputs("ki", "gi")
             "ku" -> outputs("ku", "gu")
@@ -1037,6 +1059,9 @@ private data class KanaOutput(val base: String, val romaji: String) {
         }
     }
 }
+
+private fun List<KanaOutput>.hasVariableRomajiLength(): Boolean =
+    map { it.romaji.length }.distinct().size > 1
 
 private enum class KanaKey(
     val label: String,
