@@ -2,6 +2,8 @@ name: Build Debug APK
 
 on:
   push:
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build-debug-apk:
@@ -23,9 +25,12 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
+      - name: Rename debug APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/DeskPad-v0.1.0-beta-debug.apk
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug.apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: DeskPad-debug-apk
+          path: app/build/outputs/apk/debug/DeskPad-v0.1.0-beta-debug.apk
           if-no-files-found: error

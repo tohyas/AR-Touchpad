@@ -1,5 +1,9 @@
 DeskPad
 Copyright 2026 Tohya Sugano
 
-This product includes software developed for AR Touchpad by Paul Gratz.
+DeskPad is based on AR Touchpad by Paul Gratz.
 AR Touchpad is licensed under the Apache License, Version 2.0.
+
+Modifications for DeskPad, including rebranding, package/application ID updates,
+documentation, release workflow cleanup, and distribution-oriented refinements,
+are Copyright 2026 Tohya Sugano.

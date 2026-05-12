@@ -31,8 +31,8 @@ android {
         // the DisplayManager APIs used to detect external displays.
         minSdk = 34
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0"
+        versionCode = 4
+        versionName = "0.1.0-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             // arm64-v8a only keeps the APK focused on modern external-display Android devices.
