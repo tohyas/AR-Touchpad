@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
 #include <jni.h>
 #include <fcntl.h>
@@ -41,7 +43,7 @@ extern "C" {
 // Returns: the fd on success (>= 0), or a negative errno on failure.
 // Must be called before any other nXxx functions.
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nOpen(JNIEnv*, jclass) {
+Java_com_tohyas_deskpad_UinputNative_nOpen(JNIEnv*, jclass) {
     g_fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (g_fd < 0) LOGE("open /dev/uinput failed errno=%d", errno);
     else          LOGI("opened /dev/uinput fd=%d", g_fd);
@@ -54,7 +56,7 @@ Java_com_pgratz_artouchpad_UinputNative_nOpen(JNIEnv*, jclass) {
 // Os.ioctl(fd, req, value) variant — only ioctlInt(fd, req) (no value arg) remains.
 // Returns: the ioctl return value (0 on success, negative on error).
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nIoctl(JNIEnv*, jclass, jint request, jint value) {
+Java_com_tohyas_deskpad_UinputNative_nIoctl(JNIEnv*, jclass, jint request, jint value) {
     int ret = ioctl(g_fd, (unsigned long)request, (int)value);
     if (ret < 0) LOGE("ioctl(0x%x, %d) failed errno=%d", request, value, errno);
     return ret;
@@ -66,7 +68,7 @@ Java_com_pgratz_artouchpad_UinputNative_nIoctl(JNIEnv*, jclass, jint request, ji
 // name: device name visible in /proc/bus/input/devices and to Android InputReader.
 // Returns: bytes written on success (sizeof(uinput_user_dev)), negative on failure.
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nWriteDevInfo(JNIEnv* env, jclass, jstring jname) {
+Java_com_tohyas_deskpad_UinputNative_nWriteDevInfo(JNIEnv* env, jclass, jstring jname) {
     struct uinput_user_dev dev;
     memset(&dev, 0, sizeof(dev));
     const char* name = env->GetStringUTFChars(jname, nullptr);
@@ -87,7 +89,7 @@ Java_com_pgratz_artouchpad_UinputNative_nWriteDevInfo(JNIEnv* env, jclass, jstri
 // type/code/value: Linux input subsystem constants (EV_REL, REL_X, pixel delta, etc.).
 // Returns: bytes written on success (sizeof(input_event)), negative on failure.
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nWriteEvent(JNIEnv*, jclass, jint type, jint code, jint value) {
+Java_com_tohyas_deskpad_UinputNative_nWriteEvent(JNIEnv*, jclass, jint type, jint code, jint value) {
     struct input_event ev;
     memset(&ev, 0, sizeof(ev));
     struct timeval tv;
@@ -104,7 +106,7 @@ Java_com_pgratz_artouchpad_UinputNative_nWriteEvent(JNIEnv*, jclass, jint type, 
 // Sends UI_DEV_DESTROY to unregister the virtual device from the Linux input subsystem,
 // then closes g_fd. Safe to call when g_fd is already -1 (no-op guard).
 JNIEXPORT void JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nClose(JNIEnv*, jclass) {
+Java_com_tohyas_deskpad_UinputNative_nClose(JNIEnv*, jclass) {
     if (g_fd >= 0) {
         ioctl(g_fd, UI_DEV_DESTROY);
         close(g_fd);
@@ -114,7 +116,7 @@ Java_com_pgratz_artouchpad_UinputNative_nClose(JNIEnv*, jclass) {
 }
 
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nKeyboardOpen(JNIEnv*, jclass) {
+Java_com_tohyas_deskpad_UinputNative_nKeyboardOpen(JNIEnv*, jclass) {
     g_keyboard_fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (g_keyboard_fd < 0) LOGE("open keyboard /dev/uinput failed errno=%d", errno);
     else                   LOGI("opened keyboard /dev/uinput fd=%d", g_keyboard_fd);
@@ -122,14 +124,14 @@ Java_com_pgratz_artouchpad_UinputNative_nKeyboardOpen(JNIEnv*, jclass) {
 }
 
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nKeyboardIoctl(JNIEnv*, jclass, jint request, jint value) {
+Java_com_tohyas_deskpad_UinputNative_nKeyboardIoctl(JNIEnv*, jclass, jint request, jint value) {
     int ret = ioctl(g_keyboard_fd, (unsigned long)request, (int)value);
     if (ret < 0) LOGE("keyboard ioctl(0x%x, %d) failed errno=%d", request, value, errno);
     return ret;
 }
 
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nKeyboardWriteDevInfo(JNIEnv* env, jclass, jstring jname) {
+Java_com_tohyas_deskpad_UinputNative_nKeyboardWriteDevInfo(JNIEnv* env, jclass, jstring jname) {
     struct uinput_user_dev dev;
     memset(&dev, 0, sizeof(dev));
     const char* name = env->GetStringUTFChars(jname, nullptr);
@@ -145,7 +147,7 @@ Java_com_pgratz_artouchpad_UinputNative_nKeyboardWriteDevInfo(JNIEnv* env, jclas
 }
 
 JNIEXPORT jint JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nKeyboardWriteEvent(JNIEnv*, jclass, jint type, jint code, jint value) {
+Java_com_tohyas_deskpad_UinputNative_nKeyboardWriteEvent(JNIEnv*, jclass, jint type, jint code, jint value) {
     struct input_event ev;
     memset(&ev, 0, sizeof(ev));
     struct timeval tv;
@@ -160,7 +162,7 @@ Java_com_pgratz_artouchpad_UinputNative_nKeyboardWriteEvent(JNIEnv*, jclass, jin
 }
 
 JNIEXPORT void JNICALL
-Java_com_pgratz_artouchpad_UinputNative_nKeyboardClose(JNIEnv*, jclass) {
+Java_com_tohyas_deskpad_UinputNative_nKeyboardClose(JNIEnv*, jclass) {
     if (g_keyboard_fd >= 0) {
         ioctl(g_keyboard_fd, UI_DEV_DESTROY);
         close(g_keyboard_fd);

@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad
+package com.tohyas.deskpad
 
 import android.app.Application
 import android.content.Context
@@ -105,7 +107,7 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // Enumerates all displays via DisplayManager; picks the first non-default display as the
-    // target (glasses). Updates state with display list, cursor center, and all status flags.
+    // target external display. Updates state with display list, cursor center, and all status flags.
     // Also calls setDisplay on MouseService so key/cursor events reach the right display.
     fun refresh() {
         val allDisplays = displayManager.displays.map { d ->
@@ -206,9 +208,9 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(touchMode = TouchMode.SCROLL) }
     }
 
-    // Forwards an Android keycode to MouseService for injection on the glasses display.
+    // Forwards an Android keycode to MouseService for injection on the external display.
     fun pressKey(linuxKeyCode: Int) = mouse.pressKey(linuxKeyCode)
-    // Converts text to key events and injects them to the focused window on the glasses display.
+    // Converts text to key events and injects them to the focused window on the external display.
     fun typeText(text: String) = mouse.typeText(text)
 
     // Sends one virtual keyboard key through the service-level hardware keyboard path.
@@ -316,7 +318,7 @@ class TouchpadViewModel(app: Application) : AndroidViewModel(app) {
 
     // Input: text accumulated in the phone keyboard proxy fallback.
     // Dismisses the phone keyboard first (to avoid IME session conflicts), waits 200 ms for
-    // the IME to tear down, then injects the text to the glasses display without appending Enter.
+    // the IME to tear down, then injects the text to the external display without appending Enter.
     fun sendKeyboardText(text: String) {
         if (text.isEmpty()) { toggleKeyboard(); return }
         toggleKeyboard()

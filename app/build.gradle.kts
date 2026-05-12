@@ -13,29 +13,29 @@ val localProps = Properties().also { props ->
 }
 
 android {
-    namespace = "com.pgratz.artouchpad"
+    namespace = "com.tohyas.deskpad"
     compileSdk = 35
 
     signingConfigs {
         create("release") {
             storeFile = file(localProps.getProperty("KEYSTORE_PATH", "release.jks"))
             storePassword = localProps.getProperty("KEYSTORE_PASSWORD", "")
-            keyAlias = localProps.getProperty("KEY_ALIAS", "artouchpad")
+            keyAlias = localProps.getProperty("KEY_ALIAS", "deskpad")
             keyPassword = localProps.getProperty("KEY_PASSWORD", "")
         }
     }
 
     defaultConfig {
-        applicationId = "com.pgratz.artouchpad"
+        applicationId = "com.tohyas.deskpad"
         // minSdk 34 (Android 14): required for WindowManager.currentWindowMetrics and
-        // the DisplayManager APIs used to detect the glasses as a secondary display.
+        // the DisplayManager APIs used to detect external displays.
         minSdk = 34
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            // arm64-v8a only: Pixel 10 and Viture XR Pro are both 64-bit ARM devices.
+            // arm64-v8a only keeps the APK focused on modern external-display Android devices.
             // Omitting x86/x86_64 keeps the APK small and avoids cross-compiling uinput_jni.
             abiFilters += "arm64-v8a"
         }

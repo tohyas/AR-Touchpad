@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AR_Touchpad"
+rootProject.name = "DeskPad"
 include(":app")

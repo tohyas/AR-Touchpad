@@ -11,21 +11,28 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad.ui.theme
+package com.tohyas.deskpad.ui.theme
 
-import androidx.compose.material3.Typography
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.Composable
 
-val Typography = Typography(
-    bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-        letterSpacing = 0.5.sp,
-    ),
+private val DarkColors = darkColorScheme(
+    primary = Blue80,
+    secondary = BlueGrey80,
+    tertiary = DarkBlue40,
+    background = DarkBG,
+    surface = DarkSurface,
 )
+
+@Composable
+fun DeskPadTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = DarkColors,
+        typography = Typography,
+        content = content,
+    )
+}

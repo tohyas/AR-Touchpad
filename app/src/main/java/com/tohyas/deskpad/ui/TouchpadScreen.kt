@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad.ui
+package com.tohyas.deskpad.ui
 
 import android.provider.Settings
 import android.util.Log
@@ -38,11 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.pgratz.artouchpad.DisplayInfo
-import com.pgratz.artouchpad.TouchMode
-import com.pgratz.artouchpad.TouchpadViewModel
-import com.pgratz.artouchpad.VirtualKey
-import com.pgratz.artouchpad.VirtualKeyboardMode
+import com.tohyas.deskpad.DisplayInfo
+import com.tohyas.deskpad.TouchMode
+import com.tohyas.deskpad.TouchpadViewModel
+import com.tohyas.deskpad.VirtualKey
+import com.tohyas.deskpad.VirtualKeyboardMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -52,11 +54,11 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 
-private val BG = Color(0xFF0D1117)
-private val SURFACE = Color(0xFF1A2332)
-private val SURFACE_DISABLED = Color(0xFF111820)
-private val ACCENT = Color(0xFF4FC3F7)
-private val ACCENT_DIM = Color(0xFF1A4A6A)
+private val BG = Color(0xFF020B1E)
+private val SURFACE = Color(0xFF071A33)
+private val SURFACE_DISABLED = Color(0xFF06111F)
+private val ACCENT = Color(0xFF18D9FF)
+private val ACCENT_DIM = Color(0xFF005F9E)
 private val TEXT = Color(0xFFE0E0E0)
 private val TEXT_DIM = Color(0xFF90A4AE)
 private val TEXT_MUTED = Color(0xFF546E7A)
@@ -180,7 +182,7 @@ private fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("AR Touchpad", color = TEXT, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                Text("DeskPad", color = TEXT, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     StatusDot(mouseReady, "Mouse")
                     StatusDot(targetDisplay != null, "Display")
@@ -1321,7 +1323,7 @@ private fun SettingsPanel(
             }
             if (allDisplays.size == 1) {
                 Text(
-                    "Only 1 display — glasses may be in mirror mode. Switch to Desktop/Extended.",
+                    "Only 1 display — external display may be in mirror mode. Switch to Desktop/Extended.",
                     color = Color(0xFFFFB300), fontSize = 11.sp,
                 )
             }

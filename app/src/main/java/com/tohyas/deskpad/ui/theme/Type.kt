@@ -11,13 +11,23 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad.ui.theme
+package com.tohyas.deskpad.ui.theme
 
-import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
-val Blue80 = Color(0xFF4FC3F7)
-val BlueGrey80 = Color(0xFF90A4AE)
-val DarkBlue40 = Color(0xFF1A4A6A)
-val DarkBG = Color(0xFF0D1117)
-val DarkSurface = Color(0xFF1A2332)
+val Typography = Typography(
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.5.sp,
+    ),
+)

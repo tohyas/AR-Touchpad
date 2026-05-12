@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad
+package com.tohyas.deskpad
 
 import android.content.ComponentName
 import android.content.ServiceConnection
@@ -33,7 +35,7 @@ class ShizukuMouseController {
     private var pendingDy = 0f
 
     private val userServiceArgs = Shizuku.UserServiceArgs(
-        ComponentName("com.pgratz.artouchpad", MouseService::class.java.name)
+        ComponentName("com.tohyas.deskpad", MouseService::class.java.name)
     )
         .processNameSuffix("mouse")
         .daemon(false)
@@ -141,12 +143,12 @@ class ShizukuMouseController {
         runCatching { service?.scroll(dx, dy) }
     }
 
-    // Injects an Android keycode (e.g. KEYCODE_BACK) targeted at the glasses display.
+    // Injects an Android keycode (e.g. KEYCODE_BACK) targeted at the external display.
     fun pressKey(linuxKeyCode: Int) {
         runCatching { service?.pressKey(linuxKeyCode) }
     }
 
-    // Converts a text string to KeyEvents and injects them to the glasses display.
+    // Converts a text string to KeyEvents and injects them to the external display.
     fun typeText(text: String) {
         runCatching { service?.typeText(text) }
     }
@@ -167,16 +169,16 @@ class ShizukuMouseController {
     // Injects a Ctrl+scroll MotionEvent for content-level zoom in Chrome/WebView apps.
     fun ctrlScroll(amount: Float) { runCatching { service?.ctrlScroll(amount) } }
 
-    // Sends one Linux key through the AR Touchpad uinput keyboard device.
+    // Sends one Linux key through the DeskPad uinput keyboard device.
     fun pressHardwareKey(linuxKeyCode: Int, withShift: Boolean = false, withCtrl: Boolean = false): Boolean =
         runCatching { service?.pressHardwareKey(linuxKeyCode, withShift, withCtrl) == true }.getOrDefault(false)
 
-    // Holds or releases KEY_LEFTSHIFT on the AR Touchpad uinput keyboard device.
+    // Holds or releases KEY_LEFTSHIFT on the DeskPad uinput keyboard device.
     fun setKeyboardShiftDown(down: Boolean) {
         runCatching { service?.setKeyboardShiftDown(down) }
     }
 
-    // Holds or releases KEY_LEFTCTRL on the AR Touchpad uinput keyboard device.
+    // Holds or releases KEY_LEFTCTRL on the DeskPad uinput keyboard device.
     fun setKeyboardCtrlDown(down: Boolean) {
         runCatching { service?.setKeyboardCtrlDown(down) }
     }

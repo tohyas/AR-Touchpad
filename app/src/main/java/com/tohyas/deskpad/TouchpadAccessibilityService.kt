@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad
+package com.tohyas.deskpad
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
@@ -70,7 +72,7 @@ class TouchpadAccessibilityService : AccessibilityService() {
         detectExternalDisplay()
     }
 
-    // Finds the first non-default display (the glasses); falls back to the phone's window
+    // Finds the first non-default display; falls back to the phone's window
     // bounds if none is found. Updates the companion-object dimensions and recenters the cursor.
     private fun detectExternalDisplay() {
         val external = displayManager.displays.firstOrNull { it.displayId != Display.DEFAULT_DISPLAY }
@@ -153,7 +155,7 @@ class TouchpadAccessibilityService : AccessibilityService() {
 
     // Assembles a GestureDescription from one or more strokes. On Android 12+ with an external
     // display, attempts to set the target displayId via GestureDescription.Builder.setDisplayId
-    // reflection so gestures land on the glasses screen instead of the phone.
+    // reflection so gestures land on the external display instead of the phone.
     private fun buildGesture(vararg strokes: GestureDescription.StrokeDescription): GestureDescription {
         val builder = GestureDescription.Builder()
         strokes.forEach { builder.addStroke(it) }
@@ -183,7 +185,7 @@ class TouchpadAccessibilityService : AccessibilityService() {
     }
 
     // Receives all accessibility events; filters for TYPE_VIEW_FOCUSED on an editable,
-    // visible view whose window is on a non-default display (i.e. the glasses). When matched,
+    // visible view whose window is on a non-default display. When matched,
     // fires onExternalTextFocus so the ViewModel can show the phone keyboard proxy.
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return

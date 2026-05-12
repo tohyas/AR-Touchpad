@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad
+package com.tohyas.deskpad
 
 import android.os.Bundle
 import android.util.Log
@@ -24,8 +26,8 @@ import androidx.activity.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.pgratz.artouchpad.ui.TouchpadScreen
-import com.pgratz.artouchpad.ui.theme.ARTouchpadTheme
+import com.tohyas.deskpad.ui.TouchpadScreen
+import com.tohyas.deskpad.ui.theme.DeskPadTheme
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -43,7 +45,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         observeKeyboardFocusMode()
         setContent {
-            ARTouchpadTheme {
+            DeskPadTheme {
                 TouchpadScreen(viewModel = viewModel)
             }
         }

@@ -6,8 +6,8 @@
       Receive every event type so we can detect TYPE_VIEW_FOCUSED on the external display.
 
   accessibilityFlags:
-    flagReportViewIds            — lets us read source.window.displayId to identify the glasses.
-    flagRetrieveInteractiveWindows — required to see windows on non-default (glasses) displays.
+    flagReportViewIds            — lets us read source.window.displayId to identify external displays.
+    flagRetrieveInteractiveWindows — required to see windows on non-default displays.
 
   canPerformGestures="true"
       Required to dispatch tap/swipe gestures via dispatchGesture().

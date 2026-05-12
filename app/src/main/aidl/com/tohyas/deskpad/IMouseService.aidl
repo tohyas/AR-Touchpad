@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad;
+package com.tohyas.deskpad;
 
 interface IMouseService {
     // Tells the service which display to target for cursor movement and key injection,
@@ -57,7 +59,7 @@ interface IMouseService {
     // amount: AXIS_VSCROLL value (positive = zoom in, negative = zoom out).
     void ctrlScroll(float amount) = 11;
 
-    // Sends a Linux EV_KEY press+release through the AR Touchpad uinput keyboard device.
+    // Sends a Linux EV_KEY press+release through the DeskPad uinput keyboard device.
     // Returns false if the keyboard device could not be created or the write failed.
     boolean pressHardwareKey(int linuxKeyCode, boolean withShift, boolean withCtrl) = 12;
 

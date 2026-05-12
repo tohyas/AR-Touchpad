@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad
+package com.tohyas.deskpad
 
 import android.util.Log
 
@@ -21,7 +23,7 @@ import android.util.Log
 object UinputNative {
     private const val TAG = "UinputNative"
 
-    // Loads libartouchpad.so when the class is first accessed.
+    // Loads libdeskpad.so when the class is first accessed.
     // Primary path: System.loadLibrary(), which works in the normal app process.
     // Fallback: When running as a Shizuku UserService (shell uid), the process
     // may not have the standard library search path configured, so we derive the
@@ -29,7 +31,7 @@ object UinputNative {
     init {
         var ok = false
         try {
-            System.loadLibrary("artouchpad")
+            System.loadLibrary("deskpad")
             ok = true
         } catch (e: UnsatisfiedLinkError) {
             // Shizuku service process may not have the standard library path set.
@@ -39,7 +41,7 @@ object UinputNative {
                 if (src != null) {
                     // src is something like /data/app/.../base.apk — strip filename
                     val base = src.removeSuffix("/base.apk").removeSuffix("base.apk")
-                    val lib = "$base/lib/arm64-v8a/libartouchpad.so"
+                    val lib = "$base/lib/arm64-v8a/libdeskpad.so"
                     System.load(lib)
                     ok = true
                     Log.i(TAG, "loaded via explicit path: $lib")

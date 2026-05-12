@@ -11,26 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad.ui.theme
+package com.tohyas.deskpad.ui.theme
 
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 
-private val DarkColors = darkColorScheme(
-    primary = Blue80,
-    secondary = BlueGrey80,
-    tertiary = DarkBlue40,
-    background = DarkBG,
-    surface = DarkSurface,
-)
-
-@Composable
-fun ARTouchpadTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = DarkColors,
-        typography = Typography,
-        content = content,
-    )
-}
+val Blue80 = Color(0xFF18D9FF)
+val BlueGrey80 = Color(0xFF8EB7CC)
+val DarkBlue40 = Color(0xFF005F9E)
+val DarkBG = Color(0xFF020B1E)
+val DarkSurface = Color(0xFF071A33)

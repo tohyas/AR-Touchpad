@@ -7,10 +7,10 @@
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ARTouchpad">
+        android:theme="@style/Theme.DeskPad">
 
         <!-- Single-activity app; portrait-locked so the touchpad surface stays stable. -->
         <activity
@@ -35,7 +35,7 @@
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <!-- Accessibility service used to dispatch touch gestures and detect text-field
-             focus on the glasses display. Gestures require BIND_ACCESSIBILITY_SERVICE;
+             focus on the external display. Gestures require BIND_ACCESSIBILITY_SERVICE;
              configuration details are in res/xml/accessibility_service_config.xml. -->
         <service
             android:name=".TouchpadAccessibilityService"

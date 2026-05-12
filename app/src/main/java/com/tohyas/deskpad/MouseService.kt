@@ -11,8 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Modifications Copyright 2026 Tohya Sugano.
 
-package com.pgratz.artouchpad
+package com.tohyas.deskpad
 
 import android.os.SystemClock
 import android.util.Log
@@ -106,7 +108,7 @@ class MouseService : IMouseService.Stub() {
             ioctl(UI_SET_KEYBIT, KEY_HOME)
             ioctl(UI_SET_KEYBIT, KEY_APPSWITCH)
 
-            val n = UinputNative.nWriteDevInfo("AR Touchpad Mouse")
+            val n = UinputNative.nWriteDevInfo("DeskPad Mouse")
             if (n < 0) { Log.e(TAG, "nWriteDevInfo failed"); return }
 
             ioctl(UI_DEV_CREATE, 0)
@@ -171,7 +173,7 @@ class MouseService : IMouseService.Stub() {
                 KEY_DOWN,
             ).forEach { ioctl(UI_SET_KEYBIT, it) }
 
-            val n = UinputNative.nKeyboardWriteDevInfo("AR Touchpad Keyboard")
+            val n = UinputNative.nKeyboardWriteDevInfo("DeskPad Keyboard")
             if (n < 0) {
                 Log.e(TAG, "uinput keyboard failed: nKeyboardWriteDevInfo returned $n")
                 return
@@ -290,7 +292,7 @@ class MouseService : IMouseService.Stub() {
     // Input: Android keycode (e.g. KeyEvent.KEYCODE_BACK = 4).
     // Creates ACTION_DOWN + ACTION_UP KeyEvents, stamps each with the target displayId via
     // InputEvent.setDisplayId reflection, then calls InputManagerGlobal.injectInputEvent so
-    // the key reaches the focused window on the glasses display rather than the phone.
+    // the key reaches the focused window on the external display rather than the phone.
     override fun pressKey(androidKeycode: Int) {
         val instance = imgInstance ?: run { Log.e(TAG, "InputManagerGlobal unavailable"); return }
         val inject   = imgInjectEvent ?: run { Log.e(TAG, "injectInputEvent unavailable"); return }
