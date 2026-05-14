@@ -23,27 +23,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.tohyas.deskpad.ui.TouchpadScreen
 import com.tohyas.deskpad.ui.theme.DeskPadTheme
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 
 // Single-activity entry point. Hosts the Compose UI and owns the ViewModel lifecycle.
 class MainActivity : ComponentActivity() {
 
     private val viewModel: TouchpadViewModel by viewModels()
-    private var keyboardWindowNonFocusable = false
+    private var controllerWindowNonFocusable = false
 
     // Sets up edge-to-edge display and mounts the full-screen TouchpadScreen composable.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        observeKeyboardFocusMode()
+        applyControllerWindowFocusPolicy()
         setContent {
             DeskPadTheme {
                 TouchpadScreen(viewModel = viewModel)
@@ -56,28 +49,24 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refresh()
+        applyControllerWindowFocusPolicy()
     }
 
-    private fun observeKeyboardFocusMode() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.state
-                    .map { it.showKeyboard }
-                    .distinctUntilChanged()
-                    .collectLatest(::setKeyboardWindowNonFocusable)
-            }
-        }
+    private fun applyControllerWindowFocusPolicy() {
+        setControllerWindowNonFocusable(true)
     }
 
-    private fun setKeyboardWindowNonFocusable(enabled: Boolean) {
-        if (keyboardWindowNonFocusable == enabled) return
-        keyboardWindowNonFocusable = enabled
+    private fun setControllerWindowNonFocusable(enabled: Boolean) {
+        if (controllerWindowNonFocusable == enabled) return
+        controllerWindowNonFocusable = enabled
         if (enabled) {
             window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL)
         }
-        Log.d(TAG, "Virtual keyboard non-focusable window flag applied=$enabled")
+        Log.d(TAG, "Controller non-focusable window flag applied=$enabled")
     }
 
     companion object {
